@@ -21,9 +21,15 @@ import {
   Share2,
   AlertTriangle,
   ArrowRight,
+  Settings,
+  Pencil,
+  Trash2,
+  Calendar,
+  Navigation,
 } from "lucide-react";
 import { formatDate, formatHours } from "@/lib/utils";
 import { eventBannerGradient } from "@/lib/utils/event-banners";
+import { AvatarCircle } from "@/components/ui/avatar-circle";
 
 export default function EventDetailPage({
   params,
@@ -43,6 +49,8 @@ export default function EventDetailPage({
   const [showClaimForm, setShowClaimForm] = useState(false);
   const [copied, setCopied] = useState(false);
   const [editingClaim, setEditingClaim] = useState(false);
+  const [showCalPicker, setShowCalPicker] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
   const [editClaimHours, setEditClaimHours] = useState(0);
   const [pledgeHours, setPledgeHours] = useState(1);
   const [showPledgeForm, setShowPledgeForm] = useState(false);
@@ -140,9 +148,21 @@ export default function EventDetailPage({
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Banner */}
       <div
-        className={`relative rounded-2xl overflow-hidden bg-gradient-to-br ${gradient} pattern-weave`}
+        className={`relative rounded-2xl overflow-hidden ${
+          event.bannerImageUrl ? "" : `bg-gradient-to-br ${gradient} pattern-weave`
+        }`}
       >
-        <div className="px-6 sm:px-8 py-10 sm:py-14">
+        {event.bannerImageUrl && (
+          <img
+            src={event.bannerImageUrl}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        )}
+        {event.bannerImageUrl && (
+          <div className="absolute inset-0 bg-gradient-to-t from-walnut/70 via-walnut/30 to-transparent" />
+        )}
+        <div className="relative px-6 sm:px-8 py-10 sm:py-14">
           <div className="flex items-start justify-between">
             <div className="space-y-3">
               <div className="flex items-center gap-2.5">
@@ -159,13 +179,13 @@ export default function EventDetailPage({
                   </Badge>
                 )}
               </div>
-              <h1 className="text-3xl sm:text-4xl font-display text-walnut tracking-tight leading-tight">
+              <h1 className={`text-3xl sm:text-4xl font-display tracking-tight leading-tight ${event.bannerImageUrl ? "text-white" : "text-walnut"}`}>
                 {event.title}
               </h1>
               {event.pool && (
                 <Link
                   href={`/pools/${event.poolId}`}
-                  className="inline-block text-sm text-walnut-muted hover:text-barn transition-colors"
+                  className={`inline-block text-sm transition-colors ${event.bannerImageUrl ? "text-white/70 hover:text-white" : "text-walnut-muted hover:text-barn"}`}
                 >
                   {event.pool.name} &rarr;
                 </Link>
@@ -213,30 +233,98 @@ export default function EventDetailPage({
       <Card>
         <CardContent className="pt-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-            <div className="flex items-start gap-2.5">
+            <div className="flex items-start gap-2.5 relative">
               <div className="w-8 h-8 rounded-xl bg-cream-dark flex items-center justify-center shrink-0">
                 <CalendarDays className="h-4 w-4 text-walnut-muted" />
               </div>
               <div>
                 <div className="text-xs uppercase tracking-wider text-walnut-muted mb-0.5">Date</div>
-                <div className="text-sm font-medium text-walnut">
+                <button
+                  type="button"
+                  onClick={() => setShowCalPicker(!showCalPicker)}
+                  className="text-sm font-medium text-barn hover:text-barn-dark transition-colors text-left cursor-pointer"
+                >
                   {formatDate(new Date(event.dateStart))}
-                </div>
+                </button>
                 <div className="text-xs text-walnut-muted/70">
                   to {formatDate(new Date(event.dateEnd))}
                 </div>
+                {showCalPicker && (() => {
+                  const start = new Date(event.dateStart);
+                  const end = new Date(event.dateEnd);
+                  const title = encodeURIComponent(event.title);
+                  const location = encodeURIComponent(event.locationName || "");
+                  const details = encodeURIComponent(event.description || "");
+                  const gcalStart = start.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+                  const gcalEnd = end.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+                  const googleCalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${gcalStart}/${gcalEnd}&location=${location}&details=${details}`;
+                  return (
+                    <div className="absolute top-full left-0 mt-1 z-10 bg-cream-light border border-earth/60 rounded-xl shadow-md p-2 space-y-1 min-w-[160px]">
+                      <a
+                        href={googleCalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setShowCalPicker(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-walnut hover:bg-cream-dark rounded-lg transition-colors"
+                      >
+                        <Calendar className="h-3.5 w-3.5" />
+                        Google Calendar
+                      </a>
+                      <a
+                        href={`data:text/calendar;charset=utf-8,BEGIN:VCALENDAR%0AVERSION:2.0%0ABEGIN:VEVENT%0ADTSTART:${gcalStart}%0ADTEND:${gcalEnd}%0ASUMMARY:${title}%0ALOCATION:${location}%0ADESCRIPTION:${details}%0AEND:VEVENT%0AEND:VCALENDAR`}
+                        download={`${event.title.replace(/\s+/g, "_")}.ics`}
+                        onClick={() => setShowCalPicker(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-walnut hover:bg-cream-dark rounded-lg transition-colors"
+                      >
+                        <Calendar className="h-3.5 w-3.5" />
+                        Apple Calendar
+                      </a>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
             {event.locationName && (
-              <div className="flex items-start gap-2.5">
+              <div className="flex items-start gap-2.5 relative">
                 <div className="w-8 h-8 rounded-xl bg-cream-dark flex items-center justify-center shrink-0">
                   <MapPin className="h-4 w-4 text-walnut-muted" />
                 </div>
                 <div>
                   <div className="text-xs uppercase tracking-wider text-walnut-muted mb-0.5">Location</div>
-                  <div className="text-sm font-medium text-walnut">
+                  <button
+                    type="button"
+                    onClick={() => setShowMapPicker(!showMapPicker)}
+                    className="text-sm font-medium text-barn hover:text-barn-dark transition-colors text-left cursor-pointer"
+                  >
                     {event.locationName}
-                  </div>
+                  </button>
+                  {showMapPicker && (() => {
+                    const loc = encodeURIComponent(event.locationName || "");
+                    return (
+                      <div className="absolute top-full left-0 mt-1 z-10 bg-cream-light border border-earth/60 rounded-xl shadow-md p-2 space-y-1 min-w-[160px]">
+                        <a
+                          href={`https://maps.google.com/?q=${loc}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => setShowMapPicker(false)}
+                          className="flex items-center gap-2 px-3 py-2 text-sm text-walnut hover:bg-cream-dark rounded-lg transition-colors"
+                        >
+                          <Navigation className="h-3.5 w-3.5" />
+                          Google Maps
+                        </a>
+                        <a
+                          href={`https://maps.apple.com/?q=${loc}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => setShowMapPicker(false)}
+                          className="flex items-center gap-2 px-3 py-2 text-sm text-walnut hover:bg-cream-dark rounded-lg transition-colors"
+                        >
+                          <Navigation className="h-3.5 w-3.5" />
+                          Apple Maps
+                        </a>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}
@@ -326,9 +414,11 @@ export default function EventDetailPage({
                       className="flex items-center justify-between py-2 px-3 rounded-xl bg-cream-dark/50"
                     >
                       <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-full bg-golden-light flex items-center justify-center text-golden-dark text-xs font-semibold">
-                          {pledge.account.displayName[0]?.toUpperCase()}
-                        </div>
+                        <AvatarCircle
+                          src={pledge.account.avatarUrl}
+                          name={pledge.account.displayName}
+                          size="sm"
+                        />
                         <span className="text-sm text-walnut">
                           {pledge.account.displayName}
                           {pledge.accountId === event.hostId && (
@@ -472,9 +562,10 @@ export default function EventDetailPage({
                   className="flex items-center justify-between py-2.5 px-3 rounded-xl hover:bg-cream-dark/50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-barn-light flex items-center justify-center text-barn text-sm font-semibold">
-                      {claim.account.displayName[0]?.toUpperCase()}
-                    </div>
+                    <AvatarCircle
+                      src={claim.account.avatarUrl}
+                      name={claim.account.displayName}
+                    />
                     <span className="text-sm font-medium text-walnut">
                       {claim.account.displayName}
                     </span>
@@ -645,24 +736,12 @@ export default function EventDetailPage({
         {/* Host controls */}
         {isHost &&
           ["draft", "open", "confirmed", "pledging"].includes(event.status) && (
-            <div className="flex gap-3">
-              <Link href={`/events/${eventId}/edit`} className="flex-1">
-                <Button variant="outline" className="w-full">
-                  Edit Event
-                </Button>
-              </Link>
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  if (confirm("Cancel this event? All claimed slots and pledges will be released.")) {
-                    cancelEventMutation.mutate({ eventId });
-                  }
-                }}
-                disabled={cancelEventMutation.isPending}
-              >
-                {cancelEventMutation.isPending ? "..." : "Cancel Event"}
+            <Link href={`/events/${eventId}/edit`}>
+              <Button variant="outline" className="w-full">
+                <Settings className="h-4 w-4" />
+                Manage Event
               </Button>
-            </div>
+            </Link>
           )}
 
         {/* Verify button */}

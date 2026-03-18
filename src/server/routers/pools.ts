@@ -29,6 +29,9 @@ export const poolsRouter = router({
           symbol,
           description: input.description,
           locationName: input.locationName,
+          websiteUrl: input.websiteUrl || null,
+          groupChatUrl: input.groupChatUrl || null,
+          customLinks: input.customLinks || null,
           joinPolicy: input.joinPolicy,
           startingBalance: input.startingBalance,
           maxNegativeBalance: input.maxNegativeBalance,
@@ -88,7 +91,7 @@ export const poolsRouter = router({
       });
       if (!pool) throw new TRPCError({ code: "NOT_FOUND" });
 
-      // Check membership
+      // Check membership (any status — we return status to the client)
       const membership = await ctx.db.query.poolMemberships.findFirst({
         where: and(
           eq(poolMemberships.poolId, input.poolId),
@@ -97,13 +100,26 @@ export const poolsRouter = router({
         ),
       });
 
-      // Get member count
+      // Gate: pending members can't see full pool data
+      if (membership && membership.status === "pending") {
+        return {
+          pool,
+          membership,
+          memberCount: 0,
+          totalHoursExchanged: 0,
+          userBalance: { earned: 0, spent: 0, balance: 0 },
+          pending: true,
+        };
+      }
+
+      // Get member count (active only)
       const [memberCount] = await ctx.db
         .select({ count: sql<number>`count(*)::int` })
         .from(poolMemberships)
         .where(
           and(
             eq(poolMemberships.poolId, input.poolId),
+            eq(poolMemberships.status, "active"),
             isNull(poolMemberships.leftAt)
           )
         );
@@ -144,6 +160,7 @@ export const poolsRouter = router({
         memberCount: memberCount.count,
         totalHoursExchanged: Number(hoursStats.totalEarned),
         userBalance,
+        pending: false,
       };
     }),
 
@@ -169,6 +186,7 @@ export const poolsRouter = router({
         .where(
           and(
             eq(poolMemberships.poolId, input.poolId),
+            eq(poolMemberships.status, "active"),
             isNull(poolMemberships.leftAt)
           )
         )
@@ -668,6 +686,15 @@ export const poolsRouter = router({
         monthlyEvents,
         reciprocityBands: bands,
       };
+    }),
+
+  skillTags: protectedProcedure
+    .input(z.object({ poolId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      const pool = await ctx.db.query.pools.findFirst({
+        where: eq(pools.id, input.poolId),
+      });
+      return pool?.skillTags || [];
     }),
 
   activity: protectedProcedure

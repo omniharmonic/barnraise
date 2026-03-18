@@ -16,6 +16,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AvatarCircle } from "@/components/ui/avatar-circle";
 import { formatDate } from "@/lib/utils";
 
 export default function MemberProfilePage({
@@ -33,23 +34,23 @@ export default function MemberProfilePage({
   if (isLoading) {
     return (
       <div className="max-w-2xl mx-auto animate-pulse space-y-6">
-        <div className="h-8 bg-stone-200 rounded w-1/3" />
-        <div className="h-64 bg-stone-200 rounded-xl" />
+        <div className="h-8 bg-earth/30 rounded-xl w-1/3" />
+        <div className="h-64 bg-earth/20 rounded-2xl" />
       </div>
     );
   }
 
-  if (!profile?.account) return <div>Member not found</div>;
+  if (!profile?.account) return <div className="text-walnut-muted text-center py-16">Member not found</div>;
 
   const reliabilityColor =
     profile.attendanceReliability >= 80
-      ? "text-green-700"
+      ? "text-sage"
       : profile.attendanceReliability >= 50
-      ? "text-amber-600"
-      : "text-red-600";
+      ? "text-golden-dark"
+      : "text-barn";
 
   const balanceColor =
-    profile.balance >= 0 ? "text-green-700" : "text-amber-700";
+    profile.balance >= 0 ? "text-sage" : "text-barn";
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -62,26 +63,29 @@ export default function MemberProfilePage({
 
       {/* Header */}
       <div className="flex items-center gap-4">
-        <div className="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 text-2xl font-bold">
-          {profile.account.displayName[0]?.toUpperCase()}
-        </div>
+        <AvatarCircle
+          src={profile.account.avatarUrl}
+          name={profile.account.displayName}
+          size="lg"
+          className="!w-16 !h-16 !text-2xl"
+        />
         <div>
-          <h1 className="text-2xl font-bold text-stone-900">
+          <h1 className="text-2xl font-display text-walnut">
             {profile.account.displayName}
           </h1>
           {profile.membership && (
             <div className="flex items-center gap-2 mt-1">
               {profile.membership.role === "steward" && (
-                <Badge variant="outline">Steward</Badge>
+                <Badge variant="outline" className="text-[10px]">Steward</Badge>
               )}
-              <span className="text-sm text-stone-500">
+              <span className="text-sm text-walnut-muted">
                 Member since{" "}
                 {new Date(profile.membership.joinedAt).toLocaleDateString()}
               </span>
             </div>
           )}
           {profile.account.bio && (
-            <p className="text-sm text-stone-600 mt-2">
+            <p className="text-sm text-walnut-muted mt-2">
               {profile.account.bio}
             </p>
           )}
@@ -101,37 +105,37 @@ export default function MemberProfilePage({
 
       {/* Key Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
+        <Card className="animate-fade-in-up stagger-1">
           <CardContent className="pt-6 text-center">
-            <div className={`text-2xl font-bold ${balanceColor}`}>
+            <div className={`text-2xl font-mono font-medium ${balanceColor}`}>
               {profile.balance >= 0 ? "+" : ""}
               {profile.balance}h
             </div>
-            <div className="text-xs text-stone-500 mt-1">Balance</div>
+            <div className="text-xs text-walnut-muted mt-1">Balance</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="animate-fade-in-up stagger-2">
           <CardContent className="pt-6 text-center">
-            <div className={`text-2xl font-bold ${reliabilityColor}`}>
+            <div className={`text-2xl font-mono font-medium ${reliabilityColor}`}>
               {Math.round(profile.attendanceReliability)}%
             </div>
-            <div className="text-xs text-stone-500 mt-1">Reliability</div>
+            <div className="text-xs text-walnut-muted mt-1">Reliability</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="animate-fade-in-up stagger-3">
           <CardContent className="pt-6 text-center">
-            <div className="text-2xl font-bold text-stone-900">
+            <div className="text-2xl font-display text-walnut">
               {profile.attended}
             </div>
-            <div className="text-xs text-stone-500 mt-1">Events Attended</div>
+            <div className="text-xs text-walnut-muted mt-1">Attended</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="animate-fade-in-up stagger-4">
           <CardContent className="pt-6 text-center">
-            <div className="text-2xl font-bold text-stone-900">
+            <div className="text-2xl font-display text-walnut">
               {profile.eventsHosted.length}
             </div>
-            <div className="text-xs text-stone-500 mt-1">Events Hosted</div>
+            <div className="text-xs text-walnut-muted mt-1">Hosted</div>
           </CardContent>
         </Card>
       </div>
@@ -142,57 +146,25 @@ export default function MemberProfilePage({
           <CardTitle className="text-base">Reputation Signals</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm">
-                <TrendingUp className="h-4 w-4 text-stone-400" />
-                <span>Contribution Ratio</span>
+          <div className="space-y-3.5">
+            {[
+              { icon: TrendingUp, label: "Contribution Ratio", value: profile.contributionRatio === Infinity ? "Net giver" : profile.contributionRatio.toFixed(1) },
+              { icon: Clock, label: "Hours Earned", value: `${profile.hoursEarned}h` },
+              { icon: Clock, label: "Hours Spent (as host)", value: `${profile.hoursSpent}h` },
+              { icon: XCircle, label: "No-shows (90 days)", value: profile.noShows90d, warn: profile.noShows90d >= 3 },
+              { icon: AlertTriangle, label: "Late Cancellations", value: profile.lateCancels },
+            ].map((item) => (
+              <div key={item.label} className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm">
+                  <item.icon className="h-4 w-4 text-walnut-muted" />
+                  <span className="text-walnut">{item.label}</span>
+                </div>
+                <span className={`text-sm font-mono font-medium ${item.warn ? "text-barn" : "text-walnut"}`}>
+                  {item.value}
+                  {item.warn && <AlertTriangle className="h-3 w-3 inline ml-1 text-barn" />}
+                </span>
               </div>
-              <span className="text-sm font-medium">
-                {profile.contributionRatio === Infinity
-                  ? "Net giver"
-                  : profile.contributionRatio.toFixed(1)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm">
-                <Clock className="h-4 w-4 text-stone-400" />
-                <span>Hours Earned</span>
-              </div>
-              <span className="text-sm font-medium">{profile.hoursEarned}h</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm">
-                <Clock className="h-4 w-4 text-stone-400" />
-                <span>Hours Spent (as host)</span>
-              </div>
-              <span className="text-sm font-medium">{profile.hoursSpent}h</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm">
-                <XCircle className="h-4 w-4 text-stone-400" />
-                <span>No-shows (90 days)</span>
-              </div>
-              <span
-                className={`text-sm font-medium ${
-                  profile.noShows90d >= 3 ? "text-red-600" : ""
-                }`}
-              >
-                {profile.noShows90d}
-                {profile.noShows90d >= 3 && (
-                  <AlertTriangle className="h-3 w-3 inline ml-1 text-red-500" />
-                )}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm">
-                <AlertTriangle className="h-4 w-4 text-stone-400" />
-                <span>Late Cancellations</span>
-              </div>
-              <span className="text-sm font-medium">
-                {profile.lateCancels}
-              </span>
-            </div>
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -204,16 +176,16 @@ export default function MemberProfilePage({
         </CardHeader>
         <CardContent>
           {profile.eventHistory.length > 0 ? (
-            <div className="space-y-2">
+            <div className="space-y-1">
               {profile.eventHistory.map((item) => (
                 <Link
                   key={item.id}
                   href={`/events/${item.id}`}
-                  className="flex items-center justify-between py-2 border-b border-stone-100 last:border-0 hover:bg-stone-50 -mx-2 px-2 rounded"
+                  className="flex items-center justify-between py-2.5 border-b border-earth/30 last:border-0 hover:bg-cream-dark -mx-3 px-3 rounded-xl transition-colors"
                 >
                   <div>
-                    <div className="text-sm font-medium">{item.title}</div>
-                    <div className="text-xs text-stone-500">
+                    <div className="text-sm font-medium text-walnut">{item.title}</div>
+                    <div className="text-xs text-walnut-muted">
                       <CalendarDays className="h-3 w-3 inline mr-1" />
                       {formatDate(new Date(item.dateStart))}
                     </div>
@@ -221,30 +193,30 @@ export default function MemberProfilePage({
                   <div className="flex items-center gap-2">
                     {item.claim.status === "verified_attended" && (
                       <>
-                        <span className="text-sm text-green-700">
+                        <span className="text-sm font-mono text-sage">
                           +{item.claim.hoursVerified}h
                         </span>
-                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        <CheckCircle2 className="h-4 w-4 text-sage" />
                       </>
                     )}
                     {item.claim.status === "verified_noshow" && (
                       <>
-                        <span className="text-sm text-red-600">No-show</span>
-                        <XCircle className="h-4 w-4 text-red-500" />
+                        <span className="text-sm text-barn">No-show</span>
+                        <XCircle className="h-4 w-4 text-barn" />
                       </>
                     )}
                     {item.claim.status === "claimed" && (
-                      <Badge variant="default">Upcoming</Badge>
+                      <Badge variant="default" className="text-xs">Upcoming</Badge>
                     )}
                     {item.claim.status === "cancelled" && (
-                      <Badge variant="secondary">Cancelled</Badge>
+                      <Badge variant="secondary" className="text-xs">Cancelled</Badge>
                     )}
                   </div>
                 </Link>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-stone-500">No event history yet.</p>
+            <p className="text-sm text-walnut-muted text-center py-4">No event history yet.</p>
           )}
         </CardContent>
       </Card>

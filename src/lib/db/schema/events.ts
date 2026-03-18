@@ -36,6 +36,7 @@ export const events = pgTable(
     // Metadata
     skillTags: text("skill_tags").array(),
     potluckUrl: text("potluck_url"),
+    bannerImageUrl: text("banner_image_url"),
 
     // Hosting type
     hostingType: text("hosting_type").notNull().default("solo"),

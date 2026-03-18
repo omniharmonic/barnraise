@@ -1,20 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Wheat } from "lucide-react";
 
 export default function SignInPage() {
+  return (
+    <Suspense>
+      <SignInForm />
+    </Suspense>
+  );
+}
+
+function SignInForm() {
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,15 +34,24 @@ export default function SignInPage() {
 
     const result = await signIn("credentials", {
       email,
+      password,
       name: isSignUp ? name : "",
+      isSignUp: isSignUp ? "true" : "false",
       redirect: false,
     });
 
     if (result?.error) {
-      setError("Something went wrong. Please try again.");
+      // NextAuth wraps authorize() errors in a generic message,
+      // but the error string comes through in result.error
+      const msg = result.error === "CredentialsSignin"
+        ? isSignUp
+          ? "An account with this email may already exist. Try signing in."
+          : "Invalid email or password."
+        : result.error;
+      setError(msg);
       setLoading(false);
     } else {
-      router.push("/dashboard");
+      router.push(callbackUrl);
     }
   };
 
@@ -40,11 +60,15 @@ export default function SignInPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="flex items-center justify-center w-16 h-16 rounded-full bg-amber-100">
-              <Wheat className="h-8 w-8 text-amber-700" />
-            </div>
+            <Image
+              src="/barn_raise_no_bg.png"
+              alt="Barn Raise"
+              width={80}
+              height={80}
+              className="object-contain"
+            />
           </div>
-          <CardTitle className="text-2xl">
+          <CardTitle className="text-2xl font-display">
             {isSignUp ? "Join Barn Raise" : "Welcome Back"}
           </CardTitle>
           <CardDescription>
@@ -57,7 +81,7 @@ export default function SignInPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {isSignUp && (
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">
+                <label className="block text-sm font-medium text-walnut mb-1.5">
                   Display Name
                 </label>
                 <Input
@@ -70,7 +94,7 @@ export default function SignInPage() {
               </div>
             )}
             <div>
-              <label className="block text-sm font-medium text-stone-700 mb-1">
+              <label className="block text-sm font-medium text-walnut mb-1.5">
                 Email
               </label>
               <Input
@@ -81,7 +105,24 @@ export default function SignInPage() {
                 required
               />
             </div>
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            <div>
+              <label className="block text-sm font-medium text-walnut mb-1.5">
+                Password
+              </label>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={isSignUp ? "Create a password" : "Your password"}
+                required
+                minLength={6}
+              />
+            </div>
+            {error && (
+              <div className="p-3 bg-red-50 rounded-xl border border-red-200 text-sm text-red-700">
+                {error}
+              </div>
+            )}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "..." : isSignUp ? "Create Account" : "Sign In"}
             </Button>
@@ -89,8 +130,11 @@ export default function SignInPage() {
           <div className="mt-4 text-center">
             <button
               type="button"
-              className="text-sm text-amber-700 hover:underline cursor-pointer"
-              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-sm text-barn hover:underline cursor-pointer"
+              onClick={() => {
+                setIsSignUp(!isSignUp);
+                setError("");
+              }}
             >
               {isSignUp ? "Already have an account? Sign in" : "New here? Create an account"}
             </button>

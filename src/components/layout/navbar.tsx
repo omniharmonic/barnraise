@@ -4,8 +4,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { useSession, signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
+import { AvatarCircle } from "@/components/ui/avatar-circle";
 import { NotificationBell } from "./notification-bell";
-import { LogOut, User } from "lucide-react";
+import { LogOut } from "lucide-react";
 
 export function Navbar() {
   const { data: session } = useSession();
@@ -40,9 +41,11 @@ export function Navbar() {
                   href="/profile"
                   className="hidden sm:flex items-center gap-2 text-sm text-walnut-muted hover:text-walnut transition-colors px-2"
                 >
-                  <div className="w-7 h-7 rounded-full bg-barn-light flex items-center justify-center text-barn text-xs font-semibold">
-                    {(session.user.name || session.user.email)?.[0]?.toUpperCase()}
-                  </div>
+                  <AvatarCircle
+                    src={session.user.image}
+                    name={session.user.name || session.user.email || "?"}
+                    size="sm"
+                  />
                   <span className="max-w-[120px] truncate">
                     {session.user.name || session.user.email}
                   </span>

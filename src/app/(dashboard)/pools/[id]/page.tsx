@@ -17,10 +17,15 @@ import {
   MapPin,
   ArrowRight,
   Activity,
-  Heart,
+  Globe,
+  MessageCircle,
+  ExternalLink,
+  BarChart3,
+  AlertTriangle,
 } from "lucide-react";
 import { formatDate, formatHours } from "@/lib/utils";
 import { eventBannerGradient } from "@/lib/utils/event-banners";
+import { AvatarCircle } from "@/components/ui/avatar-circle";
 
 export default function PoolDashboardPage({
   params,
@@ -46,6 +51,9 @@ export default function PoolDashboardPage({
   const { data: activity } = useQuery(
     trpc.pools.activity.queryOptions({ poolId, limit: 10 })
   );
+  const { data: health } = useQuery(
+    trpc.pools.health.queryOptions({ poolId })
+  );
 
   if (poolLoading) {
     return (
@@ -65,6 +73,31 @@ export default function PoolDashboardPage({
 
   const { pool, membership, memberCount, totalHoursExchanged, userBalance } =
     poolData;
+
+  // Pending approval state
+  if (poolData.pending) {
+    return (
+      <div className="max-w-lg mx-auto text-center py-16 space-y-4">
+        <div className="w-16 h-16 rounded-full bg-golden-light flex items-center justify-center mx-auto">
+          <Clock className="h-8 w-8 text-golden-dark" />
+        </div>
+        <h1 className="text-2xl font-display text-walnut">Request Pending</h1>
+        <p className="text-walnut-muted">
+          Your request to join <span className="font-medium text-walnut">{pool.name}</span> is
+          waiting for steward approval. You&apos;ll be notified when you&apos;re accepted.
+        </p>
+      </div>
+    );
+  }
+
+  const poolLinks = [
+    ...(pool.websiteUrl ? [{ label: "Website", url: pool.websiteUrl, icon: Globe }] : []),
+    ...(pool.groupChatUrl ? [{ label: "Group Chat", url: pool.groupChatUrl, icon: MessageCircle }] : []),
+    ...((pool.customLinks as { label: string; url: string }[] | null) || []).map((l) => ({
+      ...l,
+      icon: ExternalLink,
+    })),
+  ];
 
   const statusBadge = (status: string) => {
     const map: Record<string, "default" | "success" | "warning" | "secondary"> = {
@@ -92,23 +125,32 @@ export default function PoolDashboardPage({
           {pool.description && (
             <p className="text-walnut-muted max-w-xl">{pool.description}</p>
           )}
-          {pool.locationName && (
-            <div className="flex items-center gap-1 mt-1.5 text-sm text-walnut-muted/70">
-              <MapPin className="h-3 w-3" />
-              <span>{pool.locationName}</span>
-            </div>
-          )}
+          <div className="flex items-center gap-3 mt-1.5">
+            {pool.locationName && (
+              <span className="flex items-center gap-1 text-sm text-walnut-muted/70">
+                <MapPin className="h-3 w-3" />
+                {pool.locationName}
+              </span>
+            )}
+            {poolLinks.map((link) => (
+              <a
+                key={link.url}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-sm text-barn hover:text-barn-dark transition-colors"
+              >
+                <link.icon className="h-3 w-3" />
+                {link.label}
+              </a>
+            ))}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Link href={`/pools/${poolId}/events/new`}>
             <Button>
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">New Event</span>
-            </Button>
-          </Link>
-          <Link href={`/pools/${poolId}/health`}>
-            <Button variant="outline" size="icon">
-              <Heart className="h-4 w-4" />
             </Button>
           </Link>
           {membership?.role === "steward" && (
@@ -130,6 +172,11 @@ export default function PoolDashboardPage({
               Members
             </div>
             <div className="text-3xl font-display text-walnut">{memberCount}</div>
+            {health && (
+              <div className="text-xs text-walnut-muted mt-1">
+                <span className="font-mono">{health.activeMembers}</span> active (30d)
+              </div>
+            )}
           </CardContent>
         </Card>
         <Card className="animate-fade-in-up stagger-2">
@@ -141,6 +188,11 @@ export default function PoolDashboardPage({
             <div className="text-3xl font-display text-walnut">
               <span className="font-mono">{totalHoursExchanged}</span>
             </div>
+            {health && (
+              <div className="text-xs text-walnut-muted mt-1">
+                <span className="font-mono">{health.avgFillRate}%</span> avg fill rate
+              </div>
+            )}
           </CardContent>
         </Card>
         <Card className="animate-fade-in-up stagger-3">
@@ -163,15 +215,113 @@ export default function PoolDashboardPage({
         </Card>
         <Card className="animate-fade-in-up stagger-4">
           <CardContent className="pt-6">
-            <div className="text-walnut-muted text-xs uppercase tracking-wider mb-2">
-              Your Role
+            <div className="flex items-center gap-2 text-walnut-muted text-xs uppercase tracking-wider mb-2">
+              <BarChart3 className="h-3.5 w-3.5" />
+              Pool Health
             </div>
-            <div className="text-3xl font-display text-walnut capitalize">
-              {membership?.role || "—"}
-            </div>
+            {health ? (
+              <>
+                <div className={`text-3xl font-mono font-medium ${health.noshowRate > 15 ? "text-barn" : "text-sage"}`}>
+                  {health.noshowRate}%
+                </div>
+                <div className="text-xs text-walnut-muted mt-1">
+                  no-show rate{" "}
+                  {health.noshowRate > 15 && (
+                    <AlertTriangle className="h-3 w-3 inline text-golden-dark" />
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="text-3xl font-display text-walnut capitalize">
+                {membership?.role || "—"}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Pool Health Details */}
+      {health && (
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Reciprocity Distribution */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Reciprocity Distribution</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2.5">
+                {Object.entries(health.reciprocityBands).map(([band, count]) => {
+                  const maxBand = Math.max(...Object.values(health.reciprocityBands), 1);
+                  return (
+                    <div key={band} className="flex items-center gap-2.5">
+                      <div className="w-14 text-xs text-walnut-muted text-right font-mono">
+                        {band}
+                      </div>
+                      <div className="flex-1 flex items-center gap-2">
+                        <div
+                          className={`h-5 rounded-lg transition-all ${
+                            band === "1.0-1.5"
+                              ? "bg-sage"
+                              : band === "0.5-1.0" || band === "1.5-2.0"
+                              ? "bg-golden"
+                              : "bg-earth/60"
+                          }`}
+                          style={{
+                            width: `${(count / maxBand) * 100}%`,
+                            minWidth: count > 0 ? "14px" : "0",
+                          }}
+                        />
+                        <span className="text-xs text-walnut-muted font-mono">{count}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-walnut-muted/60 mt-3">
+                Ratio = earned / spent. Near 1.0 is balanced.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Events Per Month */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Events per Month</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {health.monthlyEvents.length > 0 ? (
+                <div className="flex items-end gap-2 h-28">
+                  {health.monthlyEvents.map((m) => {
+                    const maxCount = Math.max(
+                      ...health.monthlyEvents.map((mm) => mm.count),
+                      1
+                    );
+                    return (
+                      <div key={m.month} className="flex-1 flex flex-col items-center gap-1">
+                        <div
+                          className="w-full bg-barn rounded-t-lg"
+                          style={{
+                            height: `${(m.count / maxCount) * 100}%`,
+                            minHeight: m.count > 0 ? "6px" : "2px",
+                          }}
+                        />
+                        <span className="text-[10px] text-walnut-muted">
+                          {m.month.slice(5)}
+                        </span>
+                        <span className="text-xs font-mono font-medium text-walnut">{m.count}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-walnut-muted py-4 text-center">
+                  No events in the last 6 months.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Upcoming Events */}
       <div>
@@ -202,13 +352,12 @@ export default function PoolDashboardPage({
             {upcomingEvents.map((event, i) => (
               <Link key={event.id} href={`/events/${event.id}`}>
                 <Card
-                  className={`hover:border-barn/40 hover:shadow-md cursor-pointer group animate-fade-in-up stagger-${Math.min(i + 1, 6)}`}
+                  className={`overflow-hidden hover:border-barn/40 hover:shadow-md cursor-pointer group animate-fade-in-up stagger-${Math.min(i + 1, 6)}`}
                 >
                   <CardContent className="py-0 px-0">
                     <div className="flex">
-                      {/* Mini banner stripe */}
                       <div
-                        className={`w-1.5 rounded-l-2xl bg-gradient-to-b ${eventBannerGradient(event.title)} shrink-0`}
+                        className={`w-1.5 shrink-0 bg-gradient-to-b ${eventBannerGradient(event.title)}`}
                       />
                       <div className="flex-1 py-4 px-5">
                         <div className="flex items-center justify-between">
@@ -287,9 +436,7 @@ export default function PoolDashboardPage({
                         <div className="flex items-center gap-2 mb-0.5">
                           <h3 className="font-medium text-walnut">{event.title}</h3>
                           <Badge
-                            variant={
-                              event.status === "verified" ? "success" : "warning"
-                            }
+                            variant={event.status === "verified" ? "success" : "warning"}
                           >
                             {event.status}
                           </Badge>
@@ -322,9 +469,10 @@ export default function PoolDashboardPage({
                   className="flex items-center justify-between py-2.5 border-b border-earth/30 last:border-0 hover:bg-cream-dark -mx-3 px-3 rounded-xl transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-barn-light flex items-center justify-center text-barn text-sm font-semibold">
-                      {member.account.displayName[0]?.toUpperCase()}
-                    </div>
+                    <AvatarCircle
+                      src={member.account.avatarUrl}
+                      name={member.account.displayName}
+                    />
                     <div>
                       <div className="font-medium text-sm text-walnut">
                         {member.account.displayName}

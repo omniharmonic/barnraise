@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { DM_Sans, Young_Serif, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/layout/providers";
-import { Navbar } from "@/components/layout/navbar";
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
@@ -39,10 +38,7 @@ export default function RootLayout({
         className={`${dmSans.variable} ${youngSerif.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
         <Providers>
-          <Navbar />
-          <main className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-8">
-            {children}
-          </main>
+          {children}
         </Providers>
       </body>
     </html>

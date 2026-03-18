@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -10,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Shield, UserMinus, UserPlus, Check, X, Clock } from "lucide-react";
+import { Shield, UserMinus, Check, X, Clock, Globe, MessageCircle, Plus, ArrowLeft } from "lucide-react";
+import { AvatarCircle } from "@/components/ui/avatar-circle";
 
 export default function PoolSettingsPage({
   params,
@@ -37,20 +39,29 @@ export default function PoolSettingsPage({
     name: "",
     description: "",
     locationName: "",
+    websiteUrl: "",
+    groupChatUrl: "",
+    customLinks: [] as { label: string; url: string }[],
     joinPolicy: "invite" as "open" | "invite" | "approval",
     startingBalance: 2,
     maxNegativeBalance: -10,
   });
+  const [newLinkLabel, setNewLinkLabel] = useState("");
+  const [newLinkUrl, setNewLinkUrl] = useState("");
 
   useEffect(() => {
     if (poolData?.pool) {
+      const p = poolData.pool;
       setForm({
-        name: poolData.pool.name,
-        description: poolData.pool.description || "",
-        locationName: poolData.pool.locationName || "",
-        joinPolicy: poolData.pool.joinPolicy as typeof form.joinPolicy,
-        startingBalance: poolData.pool.startingBalance,
-        maxNegativeBalance: poolData.pool.maxNegativeBalance,
+        name: p.name,
+        description: p.description || "",
+        locationName: p.locationName || "",
+        websiteUrl: p.websiteUrl || "",
+        groupChatUrl: p.groupChatUrl || "",
+        customLinks: (p.customLinks as { label: string; url: string }[] | null) || [],
+        joinPolicy: p.joinPolicy as typeof form.joinPolicy,
+        startingBalance: p.startingBalance,
+        maxNegativeBalance: p.maxNegativeBalance,
       });
     }
   }, [poolData]);
@@ -91,12 +102,36 @@ export default function PoolSettingsPage({
     ? `${window.location.origin}/join/${poolId}`
     : `/join/${poolId}`;
 
+  const addCustomLink = () => {
+    if (newLinkLabel.trim() && newLinkUrl.trim()) {
+      setForm((f) => ({
+        ...f,
+        customLinks: [...f.customLinks, { label: newLinkLabel.trim(), url: newLinkUrl.trim() }],
+      }));
+      setNewLinkLabel("");
+      setNewLinkUrl("");
+    }
+  };
+
+  const removeCustomLink = (index: number) => {
+    setForm((f) => ({
+      ...f,
+      customLinks: f.customLinks.filter((_, i) => i !== index),
+    }));
+  };
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-stone-900">Pool Settings</h1>
+      <Link href={`/pools/${poolId}`}>
+        <Button variant="ghost" size="sm" className="mb-2">
+          <ArrowLeft className="h-4 w-4" />
+          Back to Pool
+        </Button>
+      </Link>
+      <h1 className="text-3xl font-display text-walnut tracking-tight">Pool Settings</h1>
 
       {/* Invite Link */}
-      <Card className="border-amber-200 bg-amber-50/30">
+      <Card className="border-barn/20 bg-barn-light/20">
         <CardHeader>
           <CardTitle>Invite Members</CardTitle>
           <CardDescription>
@@ -105,7 +140,7 @@ export default function PoolSettingsPage({
         </CardHeader>
         <CardContent>
           <div className="flex gap-2">
-            <Input value={inviteUrl} readOnly className="bg-white" />
+            <Input value={inviteUrl} readOnly className="bg-cream-light" />
             <Button
               variant="outline"
               onClick={() => {
@@ -117,7 +152,7 @@ export default function PoolSettingsPage({
               {copied ? "Copied!" : "Copy"}
             </Button>
           </div>
-          <p className="text-xs text-stone-500 mt-2">
+          <p className="text-xs text-walnut-muted mt-2">
             Anyone with this link can{" "}
             {poolData.pool.joinPolicy === "open"
               ? "join directly"
@@ -131,10 +166,10 @@ export default function PoolSettingsPage({
 
       {/* Pending Join Requests */}
       {pendingMembers && pendingMembers.length > 0 && (
-        <Card className="border-amber-300">
+        <Card className="border-golden/30">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-amber-600" />
+              <Clock className="h-5 w-5 text-golden-dark" />
               Pending Requests ({pendingMembers.length})
             </CardTitle>
           </CardHeader>
@@ -143,17 +178,18 @@ export default function PoolSettingsPage({
               {pendingMembers.map((member) => (
                 <div
                   key={member.id}
-                  className="flex items-center justify-between py-2 border-b border-stone-100 last:border-0"
+                  className="flex items-center justify-between py-2.5 border-b border-earth/30 last:border-0"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 text-sm font-medium">
-                      {member.account.displayName[0]?.toUpperCase()}
-                    </div>
+                    <AvatarCircle
+                      src={member.account.avatarUrl}
+                      name={member.account.displayName}
+                    />
                     <div>
-                      <div className="text-sm font-medium">
+                      <div className="text-sm font-medium text-walnut">
                         {member.account.displayName}
                       </div>
-                      <div className="text-xs text-stone-400">
+                      <div className="text-xs text-walnut-muted">
                         {member.account.email}
                       </div>
                     </div>
@@ -194,17 +230,86 @@ export default function PoolSettingsPage({
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-stone-700 mb-1">Pool Name</label>
+            <label className="block text-sm font-medium text-walnut mb-1.5">Pool Name</label>
             <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-stone-700 mb-1">Description</label>
+            <label className="block text-sm font-medium text-walnut mb-1.5">Description</label>
             <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-stone-700 mb-1">Location</label>
+            <label className="block text-sm font-medium text-walnut mb-1.5">Location</label>
             <Input value={form.locationName} onChange={(e) => setForm({ ...form, locationName: e.target.value })} />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Links */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Links</CardTitle>
+          <CardDescription>Help members find your group&apos;s resources</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-cream-dark flex items-center justify-center shrink-0">
+              <Globe className="h-4 w-4 text-walnut-muted" />
+            </div>
+            <Input
+              value={form.websiteUrl}
+              onChange={(e) => setForm({ ...form, websiteUrl: e.target.value })}
+              placeholder="Website URL"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-cream-dark flex items-center justify-center shrink-0">
+              <MessageCircle className="h-4 w-4 text-walnut-muted" />
+            </div>
+            <Input
+              value={form.groupChatUrl}
+              onChange={(e) => setForm({ ...form, groupChatUrl: e.target.value })}
+              placeholder="Group chat link (Signal, WhatsApp, Discord, etc.)"
+            />
+          </div>
+          {form.customLinks.map((link, i) => (
+            <div key={i} className="flex items-center gap-2 pl-10">
+              <span className="text-sm text-walnut truncate">{link.label}:</span>
+              <span className="text-sm text-walnut-muted truncate flex-1">{link.url}</span>
+              <button
+                type="button"
+                onClick={() => removeCustomLink(i)}
+                className="text-walnut-muted hover:text-barn cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+          {form.customLinks.length < 5 && (
+            <div className="flex items-center gap-2 pl-10">
+              <Input
+                value={newLinkLabel}
+                onChange={(e) => setNewLinkLabel(e.target.value)}
+                placeholder="Label"
+                className="w-28"
+              />
+              <Input
+                value={newLinkUrl}
+                onChange={(e) => setNewLinkUrl(e.target.value)}
+                placeholder="URL"
+                className="flex-1"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addCustomLink}
+                disabled={!newLinkLabel.trim() || !newLinkUrl.trim()}
+                className="shrink-0"
+              >
+                <Plus className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -215,37 +320,41 @@ export default function PoolSettingsPage({
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-stone-700 mb-2">Join Policy</label>
+            <label className="block text-sm font-medium text-walnut mb-2">Join Policy</label>
             <div className="grid grid-cols-3 gap-3">
               {(["open", "invite", "approval"] as const).map((policy) => (
                 <button
                   key={policy}
                   type="button"
-                  className={`p-3 rounded-lg border text-left text-sm capitalize cursor-pointer ${
-                    form.joinPolicy === policy ? "border-amber-500 bg-amber-50" : "border-stone-200"
+                  className={`p-3.5 rounded-xl border-2 text-left text-sm capitalize cursor-pointer transition-all ${
+                    form.joinPolicy === policy
+                      ? "border-barn bg-barn-light/50 shadow-sm"
+                      : "border-earth/60 hover:border-earth-dark"
                   }`}
                   onClick={() => setForm({ ...form, joinPolicy: policy })}
                 >
-                  {policy}
+                  <div className="font-medium text-walnut">{policy}</div>
                 </button>
               ))}
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-stone-700 mb-1">
-              Starting Balance: {form.startingBalance}h
+            <label className="block text-sm font-medium text-walnut mb-1.5">
+              Starting Balance:{" "}
+              <span className="font-mono text-barn">{form.startingBalance}h</span>
             </label>
             <input type="range" min={0} max={5} value={form.startingBalance}
               onChange={(e) => setForm({ ...form, startingBalance: parseInt(e.target.value) })}
-              className="w-full accent-amber-700" />
+              className="w-full accent-barn" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-stone-700 mb-1">
-              Max Negative Balance: {form.maxNegativeBalance}h
+            <label className="block text-sm font-medium text-walnut mb-1.5">
+              Max Negative Balance:{" "}
+              <span className="font-mono text-barn">{form.maxNegativeBalance}h</span>
             </label>
             <input type="range" min={-20} max={-1} value={form.maxNegativeBalance}
               onChange={(e) => setForm({ ...form, maxNegativeBalance: parseInt(e.target.value) })}
-              className="w-full accent-amber-700" />
+              className="w-full accent-barn" />
           </div>
         </CardContent>
       </Card>
@@ -254,7 +363,21 @@ export default function PoolSettingsPage({
       <div className="flex gap-3">
         <Button variant="outline" onClick={() => router.back()}>Cancel</Button>
         <Button
-          onClick={() => updateSettings.mutate({ poolId, ...form })}
+          onClick={() => {
+            const payload: Record<string, unknown> = {
+              poolId,
+              name: form.name,
+              description: form.description,
+              locationName: form.locationName,
+              joinPolicy: form.joinPolicy,
+              startingBalance: form.startingBalance,
+              maxNegativeBalance: form.maxNegativeBalance,
+            };
+            if (form.websiteUrl) payload.websiteUrl = form.websiteUrl;
+            if (form.groupChatUrl) payload.groupChatUrl = form.groupChatUrl;
+            if (form.customLinks.length > 0) payload.customLinks = form.customLinks;
+            updateSettings.mutate(payload as any);
+          }}
           disabled={updateSettings.isPending}
         >
           {updateSettings.isPending ? "Saving..." : "Save Settings"}
@@ -274,24 +397,28 @@ export default function PoolSettingsPage({
               return (
                 <div
                   key={member.id}
-                  className="flex items-center justify-between py-2 border-b border-stone-100 last:border-0"
+                  className="flex items-center justify-between py-2.5 border-b border-earth/30 last:border-0"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 text-sm font-medium">
-                      {member.account.displayName[0]?.toUpperCase()}
-                    </div>
+                    <AvatarCircle
+                      src={member.account.avatarUrl}
+                      name={member.account.displayName}
+                    />
                     <div>
-                      <div className="text-sm font-medium">
+                      <div className="text-sm font-medium text-walnut">
                         {member.account.displayName}
-                        {isMe && <span className="text-xs text-stone-400 ml-1">(you)</span>}
+                        {isMe && <span className="text-xs text-walnut-muted ml-1">(you)</span>}
                       </div>
-                      <div className="text-xs text-stone-500">
+                      <div className="text-xs text-walnut-muted">
                         {member.role === "steward" ? (
-                          <Badge variant="outline" className="text-xs">Steward</Badge>
+                          <Badge variant="outline" className="text-[10px]">Steward</Badge>
                         ) : (
                           "Member"
                         )}
-                        {" · "}{member.balance >= 0 ? "+" : ""}{member.balance}h
+                        {" · "}
+                        <span className={`font-mono ${member.balance >= 0 ? "text-sage" : "text-barn"}`}>
+                          {member.balance >= 0 ? "+" : ""}{member.balance}h
+                        </span>
                       </div>
                     </div>
                   </div>

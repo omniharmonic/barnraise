@@ -124,10 +124,20 @@ export const eventsRouter = router({
             flexibleHours: input.flexibleHours,
             skillTags: input.skillTags,
             potluckUrl: input.potluckUrl,
+            bannerImageUrl: input.bannerImageUrl,
             hostingType: "solo",
             status: "open",
           })
           .returning();
+
+        // Merge new skill tags into pool's accumulated tags
+        if (input.skillTags && input.skillTags.length > 0) {
+          const existingTags = pool.skillTags || [];
+          const merged = [...new Set([...existingTags, ...input.skillTags])];
+          if (merged.length > existingTags.length) {
+            await ctx.db.update(pools).set({ skillTags: merged }).where(eq(pools.id, input.poolId));
+          }
+        }
 
         await ctx.db.insert(auditLog).values({
           poolId: input.poolId,
@@ -188,6 +198,7 @@ export const eventsRouter = router({
           flexibleHours: input.flexibleHours,
           skillTags: input.skillTags,
           potluckUrl: input.potluckUrl,
+          bannerImageUrl: input.bannerImageUrl,
           hostingType: "group",
           status: hostPledgeHours >= input.totalHoursNeeded ? "open" : "pledging",
           hoursPledged: hostPledgeHours,
@@ -201,6 +212,15 @@ export const eventsRouter = router({
         accountId: ctx.userId,
         hoursPledged: hostPledgeHours,
       });
+
+      // Merge new skill tags into pool's accumulated tags
+      if (input.skillTags && input.skillTags.length > 0) {
+        const existingTags = pool.skillTags || [];
+        const merged = [...new Set([...existingTags, ...input.skillTags])];
+        if (merged.length > existingTags.length) {
+          await ctx.db.update(pools).set({ skillTags: merged }).where(eq(pools.id, input.poolId));
+        }
+      }
 
       await ctx.db.insert(auditLog).values({
         poolId: input.poolId,

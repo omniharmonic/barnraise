@@ -27,10 +27,10 @@ export default function PoolHealthPage({
   if (isLoading || !health) {
     return (
       <div className="max-w-3xl mx-auto animate-pulse space-y-6">
-        <div className="h-8 bg-stone-200 rounded w-1/3" />
+        <div className="h-8 bg-earth/30 rounded-xl w-1/3" />
         <div className="grid gap-4 md:grid-cols-2">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-40 bg-stone-200 rounded-xl" />
+            <div key={i} className="h-40 bg-earth/20 rounded-2xl" />
           ))}
         </div>
       </div>
@@ -50,11 +50,11 @@ export default function PoolHealthPage({
               Back to Pool
             </Button>
           </Link>
-          <h1 className="text-2xl font-bold text-stone-900 mt-2">
+          <h1 className="text-3xl font-display text-walnut tracking-tight mt-2">
             Pool Health
           </h1>
           {poolData?.pool && (
-            <p className="text-stone-500">{poolData.pool.name}</p>
+            <p className="text-walnut-muted">{poolData.pool.name}</p>
           )}
         </div>
       </div>
@@ -63,17 +63,17 @@ export default function PoolHealthPage({
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-stone-500 text-sm mb-1">
-              <Users className="h-4 w-4" />
+            <div className="flex items-center gap-2 text-walnut-muted text-xs uppercase tracking-wider mb-2">
+              <Users className="h-3.5 w-3.5" />
               Active Members
             </div>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-display text-walnut">
               {health.activeMembers}{" "}
-              <span className="text-sm font-normal text-stone-400">
+              <span className="text-sm font-normal text-walnut-muted">
                 / {health.totalMembers}
               </span>
             </div>
-            <p className="text-xs text-stone-500 mt-1">
+            <p className="text-xs text-walnut-muted mt-1">
               Active in last 30 days
             </p>
           </CardContent>
@@ -81,11 +81,11 @@ export default function PoolHealthPage({
 
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-stone-500 text-sm mb-1">
-              <BarChart3 className="h-4 w-4" />
+            <div className="flex items-center gap-2 text-walnut-muted text-xs uppercase tracking-wider mb-2">
+              <BarChart3 className="h-3.5 w-3.5" />
               Avg Fill Rate
             </div>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-display text-walnut">
               {health.avgFillRate}%
             </div>
             <div className="mt-2">
@@ -96,18 +96,18 @@ export default function PoolHealthPage({
 
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-stone-500 text-sm mb-1">
-              <AlertTriangle className="h-4 w-4" />
+            <div className="flex items-center gap-2 text-walnut-muted text-xs uppercase tracking-wider mb-2">
+              <AlertTriangle className="h-3.5 w-3.5" />
               No-Show Rate
             </div>
             <div
-              className={`text-2xl font-bold ${
-                health.noshowRate > 15 ? "text-red-600" : "text-green-700"
+              className={`text-2xl font-mono font-medium ${
+                health.noshowRate > 15 ? "text-barn" : "text-sage"
               }`}
             >
               {health.noshowRate}%
             </div>
-            <p className="text-xs text-stone-500 mt-1">
+            <p className="text-xs text-walnut-muted mt-1">
               Target: under 15%
             </p>
           </CardContent>
@@ -115,11 +115,11 @@ export default function PoolHealthPage({
 
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-stone-500 text-sm mb-1">
-              <Activity className="h-4 w-4" />
+            <div className="flex items-center gap-2 text-walnut-muted text-xs uppercase tracking-wider mb-2">
+              <Activity className="h-3.5 w-3.5" />
               Events (6mo)
             </div>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-display text-walnut">
               {health.monthlyEvents.reduce((sum, m) => sum + m.count, 0)}
             </div>
           </CardContent>
@@ -139,31 +139,31 @@ export default function PoolHealthPage({
           <div className="space-y-3">
             {Object.entries(bands).map(([band, count]) => (
               <div key={band} className="flex items-center gap-3">
-                <div className="w-20 text-sm text-stone-600 text-right">
+                <div className="w-16 text-sm text-walnut-muted text-right font-mono">
                   {band}
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <div
-                      className={`h-6 rounded transition-all ${
+                      className={`h-6 rounded-lg transition-all ${
                         band === "1.0-1.5"
-                          ? "bg-green-500"
+                          ? "bg-sage"
                           : band === "0.5-1.0" || band === "1.5-2.0"
-                          ? "bg-amber-400"
-                          : "bg-stone-300"
+                          ? "bg-golden"
+                          : "bg-earth/60"
                       }`}
                       style={{
                         width: `${(count / maxBand) * 100}%`,
                         minWidth: count > 0 ? "16px" : "0",
                       }}
                     />
-                    <span className="text-sm text-stone-500">{count}</span>
+                    <span className="text-sm text-walnut-muted font-mono">{count}</span>
                   </div>
                 </div>
               </div>
             ))}
           </div>
-          <div className="mt-3 text-xs text-stone-400">
+          <div className="mt-3 text-xs text-walnut-muted/60">
             Ratio = hours earned / hours spent. Below 1.0 = net receiver. Above
             1.0 = net giver.
           </div>
@@ -186,22 +186,22 @@ export default function PoolHealthPage({
                 return (
                   <div key={m.month} className="flex-1 flex flex-col items-center gap-1">
                     <div
-                      className="w-full bg-amber-500 rounded-t"
+                      className="w-full bg-barn rounded-t-lg"
                       style={{
                         height: `${(m.count / maxCount) * 100}%`,
                         minHeight: m.count > 0 ? "8px" : "2px",
                       }}
                     />
-                    <span className="text-xs text-stone-400">
+                    <span className="text-xs text-walnut-muted">
                       {m.month.slice(5)}
                     </span>
-                    <span className="text-xs font-medium">{m.count}</span>
+                    <span className="text-xs font-mono font-medium text-walnut">{m.count}</span>
                   </div>
                 );
               })}
             </div>
           ) : (
-            <p className="text-sm text-stone-500">
+            <p className="text-sm text-walnut-muted text-center py-4">
               No events in the last 6 months.
             </p>
           )}

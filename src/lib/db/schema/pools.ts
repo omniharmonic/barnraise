@@ -8,6 +8,7 @@ import {
   uniqueIndex,
   index,
   boolean,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { accounts } from "./accounts";
 
@@ -19,6 +20,14 @@ export const pools = pgTable(
     symbol: text("symbol").notNull(),
     description: text("description"),
     locationName: text("location_name"),
+
+    // Links
+    websiteUrl: text("website_url"),
+    groupChatUrl: text("group_chat_url"),
+    customLinks: jsonb("custom_links").$type<{ label: string; url: string }[]>(),
+
+    // Pool-level custom skill tags (accumulate across events)
+    skillTags: text("skill_tags").array(),
 
     // Governance settings
     joinPolicy: text("join_policy").notNull().default("invite"),

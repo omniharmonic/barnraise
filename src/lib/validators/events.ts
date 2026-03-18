@@ -13,6 +13,7 @@ export const createEventSchema = z.object({
   flexibleHours: z.boolean().default(true),
   skillTags: z.array(z.string()).max(10).optional(),
   potluckUrl: z.string().url().optional(),
+  bannerImageUrl: z.string().max(2000).optional(),
   hostingType: z.enum(["solo", "group"]).default("solo"),
   hostPledgeHours: z.number().int().min(1).optional(),
 });
@@ -30,6 +31,7 @@ export const updateEventSchema = z.object({
   flexibleHours: z.boolean().optional(),
   skillTags: z.array(z.string()).max(10).optional(),
   potluckUrl: z.string().url().nullish(),
+  bannerImageUrl: z.string().url().max(2000).nullish(),
 });
 
 export const claimEventSchema = z.object({

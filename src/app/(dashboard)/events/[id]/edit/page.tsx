@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Trash2, AlertTriangle, ArrowLeft } from "lucide-react";
+import Link from "next/link";
 
 const SKILL_OPTIONS = [
   "Physical Labor", "Gardening", "Construction", "Cooking", "Cleaning",
@@ -76,6 +78,14 @@ export default function EditEventPage({
     },
   });
 
+  const cancelEventMutation = useMutation({
+    ...trpc.events.cancelEvent.mutationOptions(),
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+      router.push(`/events/${eventId}`);
+    },
+  });
+
   const toggleSkill = (skill: string) => {
     setForm((f) => ({
       ...f,
@@ -88,21 +98,21 @@ export default function EditEventPage({
   if (isLoading || !event) {
     return (
       <div className="max-w-2xl mx-auto animate-pulse space-y-6">
-        <div className="h-8 bg-stone-200 rounded w-1/2" />
-        <div className="h-64 bg-stone-200 rounded-xl" />
+        <div className="h-8 bg-earth/30 rounded-xl w-1/2" />
+        <div className="h-64 bg-earth/20 rounded-2xl" />
       </div>
     );
   }
 
-  const canEdit = ["draft", "open", "confirmed"].includes(event.status);
+  const canEdit = ["draft", "open", "confirmed", "pledging"].includes(event.status);
 
   if (!canEdit) {
     return (
       <div className="max-w-2xl mx-auto text-center py-16">
-        <h2 className="text-xl font-bold text-stone-900 mb-2">
+        <h2 className="text-xl font-display text-walnut mb-2">
           Cannot Edit
         </h2>
-        <p className="text-stone-500 mb-6">
+        <p className="text-walnut-muted mb-6">
           This event is {event.status} and can no longer be edited.
         </p>
         <Button onClick={() => router.push(`/events/${eventId}`)}>
@@ -131,8 +141,16 @@ export default function EditEventPage({
 
   return (
     <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-stone-900 mb-2">Edit Event</h1>
-      <p className="text-stone-500 mb-6">
+      <Link href={`/events/${eventId}`}>
+        <Button variant="ghost" size="sm" className="mb-2">
+          <ArrowLeft className="h-4 w-4" />
+          Back to Event
+        </Button>
+      </Link>
+      <h1 className="text-3xl font-display text-walnut tracking-tight mb-2">
+        Manage Event
+      </h1>
+      <p className="text-walnut-muted mb-6">
         Editing &ldquo;{event.title}&rdquo;
       </p>
 
@@ -143,7 +161,7 @@ export default function EditEventPage({
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-stone-700 mb-1">
+              <label className="block text-sm font-medium text-walnut mb-1.5">
                 Title *
               </label>
               <Input
@@ -153,7 +171,7 @@ export default function EditEventPage({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-stone-700 mb-1">
+              <label className="block text-sm font-medium text-walnut mb-1.5">
                 Description
               </label>
               <Textarea
@@ -164,7 +182,7 @@ export default function EditEventPage({
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">
+                <label className="block text-sm font-medium text-walnut mb-1.5">
                   Start *
                 </label>
                 <Input
@@ -175,7 +193,7 @@ export default function EditEventPage({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">
+                <label className="block text-sm font-medium text-walnut mb-1.5">
                   End *
                 </label>
                 <Input
@@ -187,7 +205,7 @@ export default function EditEventPage({
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-stone-700 mb-1">
+              <label className="block text-sm font-medium text-walnut mb-1.5">
                 Location
               </label>
               <Input
@@ -205,7 +223,7 @@ export default function EditEventPage({
           <CardContent className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">
+                <label className="block text-sm font-medium text-walnut mb-1.5">
                   Total Hours *
                 </label>
                 <Input
@@ -219,7 +237,7 @@ export default function EditEventPage({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">
+                <label className="block text-sm font-medium text-walnut mb-1.5">
                   Max Participants *
                 </label>
                 <Input
@@ -233,7 +251,7 @@ export default function EditEventPage({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-stone-700 mb-1">
+                <label className="block text-sm font-medium text-walnut mb-1.5">
                   Min Participants
                 </label>
                 <Input
@@ -254,9 +272,9 @@ export default function EditEventPage({
                   checked={form.flexibleHours}
                   onChange={(e) => setForm({ ...form, flexibleHours: e.target.checked })}
                 />
-                <div className="w-11 h-6 bg-stone-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-amber-500 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600" />
+                <div className="w-11 h-6 bg-earth/60 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-barn/30 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-barn" />
               </label>
-              <span className="text-sm text-stone-700">Flexible Hours</span>
+              <span className="text-sm text-walnut">Flexible Hours</span>
             </div>
           </CardContent>
         </Card>
@@ -271,7 +289,7 @@ export default function EditEventPage({
                 <button key={skill} type="button" onClick={() => toggleSkill(skill)}>
                   <Badge
                     variant={form.skillTags.includes(skill) ? "default" : "outline"}
-                    className="cursor-pointer"
+                    className="cursor-pointer transition-all duration-150 hover:scale-105"
                   >
                     {skill}
                   </Badge>
@@ -282,18 +300,48 @@ export default function EditEventPage({
         </Card>
 
         {updateEvent.error && (
-          <p className="text-sm text-red-600 mb-4">{updateEvent.error.message}</p>
+          <div className="flex items-start gap-2.5 mb-6 p-4 bg-red-50 rounded-xl border border-red-200">
+            <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5 shrink-0" />
+            <span className="text-sm text-red-700">{updateEvent.error.message}</span>
+          </div>
         )}
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 mb-10">
           <Button type="button" variant="outline" onClick={() => router.back()}>
             Cancel
           </Button>
-          <Button type="submit" disabled={updateEvent.isPending || !form.title}>
+          <Button type="submit" className="flex-1" disabled={updateEvent.isPending || !form.title}>
             {updateEvent.isPending ? "Saving..." : "Save Changes"}
           </Button>
         </div>
       </form>
+
+      {/* Danger zone */}
+      <Card className="border-red-200/60">
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium text-walnut">Cancel Event</div>
+              <p className="text-xs text-walnut-muted mt-0.5">
+                All claimed slots and co-host pledges will be released. This cannot be undone.
+              </p>
+            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                if (confirm("Cancel this event? All claimed slots and pledges will be released.")) {
+                  cancelEventMutation.mutate({ eventId });
+                }
+              }}
+              disabled={cancelEventMutation.isPending}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {cancelEventMutation.isPending ? "Cancelling..." : "Cancel Event"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

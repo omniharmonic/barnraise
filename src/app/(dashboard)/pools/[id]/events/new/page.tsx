@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTRPC } from "@/lib/trpc/react";
@@ -9,21 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { User, Users, AlertTriangle } from "lucide-react";
+import { User, Users, AlertTriangle, ImagePlus, X, Plus, ArrowLeft } from "lucide-react";
+import Link from "next/link";
 
-const SKILL_OPTIONS = [
-  "Physical Labor",
-  "Gardening",
-  "Construction",
-  "Cooking",
-  "Cleaning",
-  "Moving",
-  "Painting",
-  "Tech",
-  "Childcare",
-  "Event Setup",
-  "Landscaping",
-  "Repair",
+const DEFAULT_SKILLS = [
+  "Physical Labor", "Gardening", "Construction", "Cooking", "Cleaning",
+  "Moving", "Painting", "Tech", "Childcare", "Event Setup", "Landscaping", "Repair",
 ];
 
 export default function CreateEventPage({
@@ -34,8 +25,8 @@ export default function CreateEventPage({
   const { id: poolId } = use(params);
   const router = useRouter();
   const trpc = useTRPC();
+  const bannerInputRef = useRef<HTMLInputElement>(null);
 
-  // Default to next Saturday 9am-3pm
   const nextSaturday = new Date();
   nextSaturday.setDate(nextSaturday.getDate() + ((6 - nextSaturday.getDay() + 7) % 7 || 7));
   nextSaturday.setHours(9, 0, 0, 0);
@@ -55,10 +46,18 @@ export default function CreateEventPage({
     skillTags: [] as string[],
     hostingType: "solo" as "solo" | "group",
     hostPledgeHours: 4,
+    bannerImageUrl: "",
   });
+
+  const [newSkill, setNewSkill] = useState("");
+  const [bannerPreview, setBannerPreview] = useState<string | null>(null);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
 
   const { data: capacityData } = useQuery(
     trpc.events.getHostCapacity.queryOptions({ poolId })
+  );
+  const { data: poolSkillTags } = useQuery(
+    trpc.pools.skillTags.queryOptions({ poolId })
   );
 
   const createEvent = useMutation(trpc.events.create.mutationOptions());
@@ -68,6 +67,25 @@ export default function CreateEventPage({
   const maxNeg = capacityData?.maxNegativeBalance ?? 0;
   const overCapacity = form.hostingType === "solo" && form.totalHoursNeeded > capacity;
 
+  // Merge default skills with pool-accumulated skills
+  const allSkillOptions = [...new Set([...DEFAULT_SKILLS, ...(poolSkillTags || [])])];
+
+  const handleBannerUpload = async (file: File) => {
+    setUploadingBanner(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (data.url) {
+        setForm((f) => ({ ...f, bannerImageUrl: data.url }));
+        setBannerPreview(URL.createObjectURL(file));
+      }
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const event = await createEvent.mutateAsync({
@@ -76,6 +94,7 @@ export default function CreateEventPage({
       dateStart: new Date(form.dateStart).toISOString(),
       dateEnd: new Date(form.dateEnd).toISOString(),
       hostPledgeHours: form.hostingType === "group" ? form.hostPledgeHours : undefined,
+      bannerImageUrl: form.bannerImageUrl || undefined,
     });
     router.push(`/events/${event.id}`);
   };
@@ -89,8 +108,22 @@ export default function CreateEventPage({
     }));
   };
 
+  const addCustomSkill = () => {
+    const trimmed = newSkill.trim();
+    if (trimmed && !form.skillTags.includes(trimmed)) {
+      setForm((f) => ({ ...f, skillTags: [...f.skillTags, trimmed] }));
+      setNewSkill("");
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto">
+      <Link href={`/pools/${poolId}`}>
+        <Button variant="ghost" size="sm" className="mb-2">
+          <ArrowLeft className="h-4 w-4" />
+          Back to Pool
+        </Button>
+      </Link>
       <h1 className="text-3xl font-display text-walnut tracking-tight mb-2">
         Create a Barn Raise
       </h1>
@@ -99,7 +132,63 @@ export default function CreateEventPage({
       </p>
 
       <form onSubmit={handleSubmit}>
+        {/* Banner Image */}
         <Card className="mb-6 animate-fade-in-up">
+          <CardHeader>
+            <CardTitle>Banner Image</CardTitle>
+            <CardDescription>
+              Add a photo to make your event stand out (optional)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <input
+              ref={bannerInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleBannerUpload(file);
+              }}
+            />
+            {bannerPreview || form.bannerImageUrl ? (
+              <div className="relative rounded-xl overflow-hidden">
+                <img
+                  src={bannerPreview || form.bannerImageUrl}
+                  alt="Banner preview"
+                  className="w-full h-40 object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForm((f) => ({ ...f, bannerImageUrl: "" }));
+                    setBannerPreview(null);
+                  }}
+                  className="absolute top-2 right-2 w-7 h-7 rounded-full bg-walnut/60 text-white flex items-center justify-center hover:bg-walnut/80 transition-colors cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => bannerInputRef.current?.click()}
+                className="w-full h-32 rounded-xl border-2 border-dashed border-earth/60 hover:border-barn/40 transition-colors flex flex-col items-center justify-center gap-2 text-walnut-muted hover:text-walnut cursor-pointer"
+              >
+                {uploadingBanner ? (
+                  <span className="text-sm">Uploading...</span>
+                ) : (
+                  <>
+                    <ImagePlus className="h-6 w-6" />
+                    <span className="text-sm">Click to upload a banner image</span>
+                  </>
+                )}
+              </button>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="mb-6 animate-fade-in-up stagger-1">
           <CardHeader>
             <CardTitle>Event Details</CardTitle>
           </CardHeader>
@@ -121,12 +210,15 @@ export default function CreateEventPage({
               </label>
               <Textarea
                 value={form.description}
-                onChange={(e) =>
-                  setForm({ ...form, description: e.target.value })
-                }
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
                 placeholder="What will the work involve? What should people bring? What will you provide (food, drinks, tools)?"
                 rows={4}
               />
+              <p className="text-xs text-walnut-muted/70 mt-1.5 leading-relaxed">
+                A great description helps people decide to show up. Mention what food or drinks
+                you&apos;ll provide, what tools to bring, and what the vibe will be like.
+                The best events feel like a party where work happens.
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -136,9 +228,7 @@ export default function CreateEventPage({
                 <Input
                   type="datetime-local"
                   value={form.dateStart}
-                  onChange={(e) =>
-                    setForm({ ...form, dateStart: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, dateStart: e.target.value })}
                   required
                 />
               </div>
@@ -149,9 +239,7 @@ export default function CreateEventPage({
                 <Input
                   type="datetime-local"
                   value={form.dateEnd}
-                  onChange={(e) =>
-                    setForm({ ...form, dateEnd: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, dateEnd: e.target.value })}
                   required
                 />
               </div>
@@ -162,9 +250,7 @@ export default function CreateEventPage({
               </label>
               <Input
                 value={form.locationName}
-                onChange={(e) =>
-                  setForm({ ...form, locationName: e.target.value })
-                }
+                onChange={(e) => setForm({ ...form, locationName: e.target.value })}
                 placeholder="Address or location description"
               />
             </div>
@@ -217,7 +303,6 @@ export default function CreateEventPage({
               </button>
             </div>
 
-            {/* Solo capacity indicator */}
             {form.hostingType === "solo" && capacityData && (
               <div className="mt-4">
                 <div className="text-sm text-walnut-muted">
@@ -249,7 +334,6 @@ export default function CreateEventPage({
               </div>
             )}
 
-            {/* Group pledge input */}
             {form.hostingType === "group" && capacityData && (
               <div className="mt-4 space-y-2">
                 <label className="block text-sm font-medium text-walnut">
@@ -279,9 +363,7 @@ export default function CreateEventPage({
         <Card className="mb-6 animate-fade-in-up stagger-3">
           <CardHeader>
             <CardTitle>Labor Needs</CardTitle>
-            <CardDescription>
-              How much help do you need?
-            </CardDescription>
+            <CardDescription>How much help do you need?</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
@@ -294,10 +376,7 @@ export default function CreateEventPage({
                   min={1}
                   value={form.totalHoursNeeded}
                   onChange={(e) =>
-                    setForm({
-                      ...form,
-                      totalHoursNeeded: parseInt(e.target.value) || 1,
-                    })
+                    setForm({ ...form, totalHoursNeeded: parseInt(e.target.value) || 1 })
                   }
                   required
                 />
@@ -311,10 +390,7 @@ export default function CreateEventPage({
                   min={1}
                   value={form.maxParticipants}
                   onChange={(e) =>
-                    setForm({
-                      ...form,
-                      maxParticipants: parseInt(e.target.value) || 1,
-                    })
+                    setForm({ ...form, maxParticipants: parseInt(e.target.value) || 1 })
                   }
                   required
                 />
@@ -328,10 +404,7 @@ export default function CreateEventPage({
                   min={1}
                   value={form.minParticipants}
                   onChange={(e) =>
-                    setForm({
-                      ...form,
-                      minParticipants: parseInt(e.target.value) || 1,
-                    })
+                    setForm({ ...form, minParticipants: parseInt(e.target.value) || 1 })
                   }
                 />
               </div>
@@ -342,16 +415,12 @@ export default function CreateEventPage({
                   type="checkbox"
                   className="sr-only peer"
                   checked={form.flexibleHours}
-                  onChange={(e) =>
-                    setForm({ ...form, flexibleHours: e.target.checked })
-                  }
+                  onChange={(e) => setForm({ ...form, flexibleHours: e.target.checked })}
                 />
                 <div className="w-11 h-6 bg-earth/60 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-barn/30 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-barn"></div>
               </label>
               <div>
-                <div className="text-sm font-medium text-walnut">
-                  Flexible Hours
-                </div>
+                <div className="text-sm font-medium text-walnut">Flexible Hours</div>
                 <div className="text-xs text-walnut-muted">
                   Allow contributors to commit partial shifts
                 </div>
@@ -364,29 +433,56 @@ export default function CreateEventPage({
           <CardHeader>
             <CardTitle>Skills Needed</CardTitle>
             <CardDescription>
-              Help people decide if this event is right for them (optional)
+              Select existing skills or add custom ones. Skills persist across pool events.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <div className="flex flex-wrap gap-2">
-              {SKILL_OPTIONS.map((skill) => (
-                <button
-                  key={skill}
-                  type="button"
-                  onClick={() => toggleSkill(skill)}
-                >
+              {allSkillOptions.map((skill) => (
+                <button key={skill} type="button" onClick={() => toggleSkill(skill)}>
                   <Badge
-                    variant={
-                      form.skillTags.includes(skill)
-                        ? "default"
-                        : "outline"
-                    }
+                    variant={form.skillTags.includes(skill) ? "default" : "outline"}
                     className="cursor-pointer transition-all duration-150 hover:scale-105"
                   >
                     {skill}
                   </Badge>
                 </button>
               ))}
+              {/* Show selected custom skills not in allSkillOptions */}
+              {form.skillTags
+                .filter((s) => !allSkillOptions.includes(s))
+                .map((skill) => (
+                  <button key={skill} type="button" onClick={() => toggleSkill(skill)}>
+                    <Badge variant="default" className="cursor-pointer transition-all duration-150 hover:scale-105">
+                      {skill}
+                    </Badge>
+                  </button>
+                ))}
+            </div>
+            <div className="flex gap-2">
+              <Input
+                value={newSkill}
+                onChange={(e) => setNewSkill(e.target.value)}
+                placeholder="Add a custom skill..."
+                className="flex-1"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addCustomSkill();
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addCustomSkill}
+                disabled={!newSkill.trim()}
+                className="shrink-0"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -399,11 +495,7 @@ export default function CreateEventPage({
         )}
 
         <div className="flex justify-end gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => router.back()}
-          >
+          <Button type="button" variant="outline" onClick={() => router.back()}>
             Cancel
           </Button>
           <Button

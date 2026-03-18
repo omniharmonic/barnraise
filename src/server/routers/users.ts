@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, isNull, sql, desc } from "drizzle-orm";
 import { router, protectedProcedure } from "@/lib/trpc/init";
 import { accounts, pointTransactions, eventClaims, events, poolMemberships } from "@/lib/db/schema";
 
@@ -18,6 +18,7 @@ export const usersRouter = router({
         bio: z.string().max(500).optional(),
         locationName: z.string().max(200).optional(),
         skills: z.array(z.string()).max(20).optional(),
+        avatarUrl: z.string().max(2000).nullish(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -28,6 +29,86 @@ export const usersRouter = router({
         .returning();
       return updated;
     }),
+
+  myPoolStats: protectedProcedure.query(async ({ ctx }) => {
+    // Get aggregated stats across all pools
+    const poolStats = await ctx.db
+      .select({
+        poolId: poolMemberships.poolId,
+        poolName: sql<string>`(select name from pools where id = ${poolMemberships.poolId})`,
+        role: poolMemberships.role,
+        joinedAt: poolMemberships.joinedAt,
+        earned: sql<number>`coalesce(sum(case when ${pointTransactions.txType} in ('earn', 'starting_balance') then ${pointTransactions.hours}::numeric else 0 end), 0)::numeric`,
+        spent: sql<number>`coalesce(sum(case when ${pointTransactions.txType} = 'spend' then ${pointTransactions.hours}::numeric else 0 end), 0)::numeric`,
+      })
+      .from(poolMemberships)
+      .leftJoin(
+        pointTransactions,
+        and(
+          eq(pointTransactions.poolId, poolMemberships.poolId),
+          eq(pointTransactions.accountId, poolMemberships.accountId)
+        )
+      )
+      .where(
+        and(
+          eq(poolMemberships.accountId, ctx.userId),
+          isNull(poolMemberships.leftAt),
+          eq(poolMemberships.status, "active")
+        )
+      )
+      .groupBy(poolMemberships.poolId, poolMemberships.role, poolMemberships.joinedAt);
+
+    // Attendance stats
+    const [attendance] = await ctx.db
+      .select({
+        totalClaims: sql<number>`count(*)::int`,
+        attended: sql<number>`count(*) filter (where ${eventClaims.status} = 'verified_attended')::int`,
+        noShows: sql<number>`count(*) filter (where ${eventClaims.status} = 'verified_noshow')::int`,
+      })
+      .from(eventClaims)
+      .where(eq(eventClaims.accountId, ctx.userId));
+
+    // Events hosted
+    const [hosted] = await ctx.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(events)
+      .where(
+        and(
+          eq(events.hostId, ctx.userId),
+          sql`${events.status} != 'cancelled'`
+        )
+      );
+
+    const totalEarned = poolStats.reduce((s, p) => s + Number(p.earned), 0);
+    const totalSpent = poolStats.reduce((s, p) => s + Number(p.spent), 0);
+
+    return {
+      pools: poolStats.map((p) => ({
+        poolId: p.poolId,
+        poolName: p.poolName,
+        role: p.role,
+        joinedAt: p.joinedAt,
+        earned: Number(p.earned),
+        spent: Number(p.spent),
+        balance: Number(p.earned) - Number(p.spent),
+      })),
+      totals: {
+        earned: totalEarned,
+        spent: totalSpent,
+        balance: totalEarned - totalSpent,
+        poolCount: poolStats.length,
+        eventsHosted: hosted.count,
+        eventsAttended: attendance.attended,
+        noShows: attendance.noShows,
+        reliability:
+          attendance.attended + attendance.noShows > 0
+            ? Math.round(
+                (attendance.attended / (attendance.attended + attendance.noShows)) * 100
+              )
+            : 100,
+      },
+    };
+  }),
 
   poolProfile: protectedProcedure
     .input(
