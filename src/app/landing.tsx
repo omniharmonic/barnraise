@@ -64,7 +64,7 @@ export function LandingPage() {
     <div className="min-h-screen bg-cream">
       {/* Nav */}
       <nav className="sticky top-0 z-50 backdrop-blur-md bg-cream/80 border-b border-earth/30">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Image
               src="/barn_raise_no_bg.png"
@@ -81,35 +81,35 @@ export function LandingPage() {
       </nav>
 
       {/* Hero */}
-      <section className="max-w-5xl mx-auto px-6 pt-20 pb-24 text-center">
-        <div className="flex justify-center mb-8">
+      <section className="max-w-5xl mx-auto px-4 sm:px-6 pt-12 sm:pt-20 pb-16 sm:pb-24 text-center">
+        <div className="flex justify-center mb-6 sm:mb-8">
           <Image
             src="/barn_raise_no_bg.png"
             alt="Barn Raise"
             width={120}
             height={120}
-            className="object-contain"
+            className="object-contain w-20 h-20 sm:w-[120px] sm:h-[120px]"
           />
         </div>
-        <h1 className="text-5xl sm:text-6xl font-display text-walnut tracking-tight leading-tight mb-6 animate-fade-in-up">
+        <h1 className="text-3xl sm:text-5xl md:text-6xl font-display text-walnut tracking-tight leading-tight mb-4 sm:mb-6 animate-fade-in-up">
           Labor that flows,
           <br />
           <span className="text-barn">not labor that&apos;s owed.</span>
         </h1>
-        <p className="text-lg text-walnut-muted max-w-2xl mx-auto mb-10 animate-fade-in-up stagger-1">
+        <p className="text-base sm:text-lg text-walnut-muted max-w-2xl mx-auto mb-8 sm:mb-10 animate-fade-in-up stagger-1">
           Barn Raise is a time-banking tool for communities who coordinate work
           through voluntary reciprocity — not money, not coercion, not keeping
           exact score. Just neighbors helping neighbors.
         </p>
-        <div className="flex items-center justify-center gap-4 animate-fade-in-up stagger-2">
-          <Link href="/sign-in">
-            <Button size="lg" className="text-base px-8">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 animate-fade-in-up stagger-2">
+          <Link href="/sign-in" className="w-full sm:w-auto">
+            <Button size="lg" className="text-base px-8 w-full sm:w-auto">
               Start Your Pool
               <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
-          <a href="#how-it-works">
-            <Button variant="outline" size="lg" className="text-base">
+          <a href="#how-it-works" className="w-full sm:w-auto">
+            <Button variant="outline" size="lg" className="text-base w-full sm:w-auto">
               Learn More
             </Button>
           </a>
@@ -118,15 +118,15 @@ export function LandingPage() {
 
       {/* How it works */}
       <section id="how-it-works" className="bg-cream-dark/40 border-y border-earth/20">
-        <div className="max-w-5xl mx-auto px-6 py-20">
-          <h2 className="text-3xl font-display text-walnut text-center mb-4">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
+          <h2 className="text-2xl sm:text-3xl font-display text-walnut text-center mb-4">
             How It Works
           </h2>
           <p className="text-walnut-muted text-center max-w-xl mx-auto mb-14">
             A simple cycle: host events that need work, show up for others,
             and let the hours flow between you.
           </p>
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8">
             <div className="text-center">
               <div className="w-14 h-14 rounded-2xl bg-barn-light flex items-center justify-center mx-auto mb-4">
                 <Sprout className="h-6 w-6 text-barn" />
@@ -171,11 +171,11 @@ export function LandingPage() {
       </section>
 
       {/* Key features */}
-      <section className="max-w-5xl mx-auto px-6 py-20">
-        <h2 className="text-3xl font-display text-walnut text-center mb-14">
+      <section className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
+        <h2 className="text-2xl sm:text-3xl font-display text-walnut text-center mb-8 sm:mb-14">
           Built for Real Communities
         </h2>
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid sm:grid-cols-2 gap-4 sm:gap-6">
           {[
             {
               icon: Users,
@@ -217,8 +217,8 @@ export function LandingPage() {
 
       {/* Cultural lineage */}
       <section className="bg-walnut text-cream">
-        <div className="max-w-5xl mx-auto px-6 py-20">
-          <h2 className="text-3xl font-display text-center mb-4">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-20">
+          <h2 className="text-2xl sm:text-3xl font-display text-center mb-4">
             A Lineage of Reciprocal Labor
           </h2>
           <p className="text-cream-dark/80 text-center max-w-2xl mx-auto mb-14">
@@ -227,14 +227,14 @@ export function LandingPage() {
             and millennia — proof that this way of working together is deeply
             human.
           </p>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
             {traditions.map((t) => (
               <div
                 key={t.name}
-                className="p-5 rounded-2xl border border-cream/10 bg-cream/5 hover:bg-cream/10 transition-colors"
+                className="p-4 sm:p-5 rounded-2xl border border-cream/10 bg-cream/5 hover:bg-cream/10 transition-colors"
               >
-                <div className="flex items-baseline justify-between mb-2">
-                  <h3 className="font-display text-lg text-cream">
+                <div className="flex items-baseline justify-between gap-2 mb-2">
+                  <h3 className="font-display text-base sm:text-lg text-cream">
                     {t.name}
                   </h3>
                   <span className="text-xs text-cream-dark/60 font-mono">
@@ -254,16 +254,16 @@ export function LandingPage() {
       </section>
 
       {/* CTA */}
-      <section className="max-w-5xl mx-auto px-6 py-24 text-center">
-        <h2 className="text-3xl sm:text-4xl font-display text-walnut mb-4">
+      <section className="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-24 text-center">
+        <h2 className="text-2xl sm:text-3xl md:text-4xl font-display text-walnut mb-4">
           Ready to raise your barn?
         </h2>
         <p className="text-walnut-muted max-w-lg mx-auto mb-8">
           Create a labor pool for your neighborhood, cooperative, land project,
           or community group. It takes two minutes.
         </p>
-        <Link href="/sign-in">
-          <Button size="lg" className="text-base px-10">
+        <Link href="/sign-in" className="inline-block">
+          <Button size="lg" className="text-base px-10 w-full sm:w-auto">
             Get Started
             <ArrowRight className="h-4 w-4" />
           </Button>
@@ -272,7 +272,7 @@ export function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-earth/30 py-8">
-        <div className="max-w-5xl mx-auto px-6 flex items-center justify-between">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Image
               src="/barn_raise_no_bg.png"

@@ -158,7 +158,7 @@ export default function ProfilePage() {
 
       {/* Cumulative Stats */}
       {totals && (
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
           <Card className="animate-fade-in-up stagger-1">
             <CardContent className="pt-5">
               <div className="text-walnut-muted text-xs uppercase tracking-wider mb-1.5">

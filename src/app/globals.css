@@ -54,12 +54,16 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
     background-color: var(--color-cream);
     color: var(--color-walnut);
     position: relative;
+    overflow-x: hidden;
+    padding-bottom: env(safe-area-inset-bottom);
   }
 
   /* Subtle grain texture — the bridge between paper and screen */

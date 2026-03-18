@@ -104,7 +104,7 @@ export default function MemberProfilePage({
       )}
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
         <Card className="animate-fade-in-up stagger-1">
           <CardContent className="pt-6 text-center">
             <div className={`text-2xl font-mono font-medium ${balanceColor}`}>

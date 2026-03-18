@@ -112,10 +112,10 @@ export default function PoolDashboardPage({
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-3xl font-display text-walnut tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-display text-walnut tracking-tight">
               {pool.name}
             </h1>
             <Badge variant="outline" className="font-mono text-[10px]">
@@ -164,7 +164,7 @@ export default function PoolDashboardPage({
       </div>
 
       {/* Stats cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
         <Card className="animate-fade-in-up stagger-1">
           <CardContent className="pt-6">
             <div className="flex items-center gap-2 text-walnut-muted text-xs uppercase tracking-wider mb-2">
@@ -333,7 +333,7 @@ export default function PoolDashboardPage({
             <select
               value={eventSort}
               onChange={(e) => setEventSort(e.target.value as typeof eventSort)}
-              className="text-xs border border-earth rounded-lg px-2.5 py-1.5 bg-cream-light text-walnut-muted focus:outline-none focus:ring-2 focus:ring-barn/20"
+              className="text-base sm:text-xs border border-earth rounded-lg px-2.5 py-1.5 bg-cream-light text-walnut-muted focus:outline-none focus:ring-2 focus:ring-barn/20"
             >
               <option value="date">Soonest</option>
               <option value="needs_help">Needs Help</option>

@@ -30,17 +30,17 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 sm:mb-8">
         <div>
-          <h1 className="text-3xl font-display text-walnut tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-display text-walnut tracking-tight">
             My Pools
           </h1>
-          <p className="text-walnut-muted mt-1">
+          <p className="text-walnut-muted mt-1 text-sm sm:text-base">
             Your labor pools and collective work communities
           </p>
         </div>
-        <Link href="/pools/new">
-          <Button>
+        <Link href="/pools/new" className="shrink-0">
+          <Button className="w-full sm:w-auto">
             <Plus className="h-4 w-4" />
             Create Pool
           </Button>
