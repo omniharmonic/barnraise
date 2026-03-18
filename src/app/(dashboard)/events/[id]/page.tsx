@@ -196,7 +196,7 @@ export default function EventDetailPage({
               size="sm"
               className="bg-white/60 border-white/50 backdrop-blur-sm shrink-0"
               onClick={() => {
-                const url = `${window.location.origin}/e/${eventId}`;
+                const url = `${window.location.origin}/events/${eventId}`;
                 navigator.clipboard.writeText(url);
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2000);
