@@ -46,3 +46,11 @@ next-env.d.ts
 
 # drizzle
 /drizzle/meta
+
+# neon
+.neon
+
+# claude/agents
+.agents/
+.claude/skills/
+skills-lock.json
