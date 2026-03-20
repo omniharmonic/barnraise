@@ -180,7 +180,7 @@ export default function EditEventPage({
                 rows={4}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-walnut mb-1.5">
                   Start *
@@ -221,7 +221,7 @@ export default function EditEventPage({
             <CardTitle>Labor Needs</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
               <div>
                 <label className="block text-sm font-medium text-walnut mb-1.5">
                   Total Hours *
@@ -306,20 +306,20 @@ export default function EditEventPage({
           </div>
         )}
 
-        <div className="flex gap-3 mb-10">
-          <Button type="button" variant="outline" onClick={() => router.back()}>
+        <div className="flex flex-col-reverse sm:flex-row gap-3 mb-10">
+          <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => router.back()}>
             Cancel
           </Button>
-          <Button type="submit" className="flex-1" disabled={updateEvent.isPending || !form.title}>
+          <Button type="submit" className="w-full sm:flex-1" disabled={updateEvent.isPending || !form.title}>
             {updateEvent.isPending ? "Saving..." : "Save Changes"}
           </Button>
         </div>
       </form>
 
       {/* Danger zone */}
-      <Card className="border-red-200/60">
+      <Card className="border-red-200/60 mb-8">
         <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
+          <div className="space-y-3">
             <div>
               <div className="text-sm font-medium text-walnut">Cancel Event</div>
               <p className="text-xs text-walnut-muted mt-0.5">
@@ -329,6 +329,7 @@ export default function EditEventPage({
             <Button
               variant="destructive"
               size="sm"
+              className="w-full sm:w-auto"
               onClick={() => {
                 if (confirm("Cancel this event? All claimed slots and pledges will be released.")) {
                   cancelEventMutation.mutate({ eventId });

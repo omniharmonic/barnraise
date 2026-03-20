@@ -1200,6 +1200,73 @@ export const eventsRouter = router({
       return { success: true };
     }),
 
+  updatePledge: protectedProcedure
+    .input(pledgeEventSchema)
+    .mutation(async ({ ctx, input }) => {
+      const event = await ctx.db.query.events.findFirst({
+        where: eq(events.id, input.eventId),
+      });
+      if (!event) throw new TRPCError({ code: "NOT_FOUND" });
+
+      if (event.hostingType !== "group" || event.status !== "pledging") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot update pledge for this event" });
+      }
+
+      const pledge = await ctx.db.query.eventPledges.findFirst({
+        where: and(
+          eq(eventPledges.eventId, input.eventId),
+          eq(eventPledges.accountId, ctx.userId),
+          eq(eventPledges.status, "active")
+        ),
+      });
+      if (!pledge) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "No active pledge found" });
+      }
+
+      // Validate capacity
+      const pool = await ctx.db.query.pools.findFirst({
+        where: eq(pools.id, event.poolId),
+      });
+      if (!pool) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+      const balance = await getAccountBalance(ctx.db, event.poolId, ctx.userId);
+      const capacity = balance + Math.abs(pool.maxNegativeBalance);
+      if (input.hoursPledged > capacity) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `You can pledge up to ${capacity}h.`,
+        });
+      }
+
+      const hoursDiff = input.hoursPledged - pledge.hoursPledged;
+
+      await ctx.db
+        .update(eventPledges)
+        .set({ hoursPledged: input.hoursPledged })
+        .where(eq(eventPledges.id, pledge.id));
+
+      await ctx.db
+        .update(events)
+        .set({
+          hoursPledged: sql`${events.hoursPledged} + ${hoursDiff}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(events.id, input.eventId));
+
+      // Check if fully funded after update
+      const updatedEvent = await ctx.db.query.events.findFirst({
+        where: eq(events.id, input.eventId),
+      });
+      if (updatedEvent && updatedEvent.hoursPledged >= updatedEvent.totalHoursNeeded && updatedEvent.status === "pledging") {
+        await ctx.db
+          .update(events)
+          .set({ status: "open", updatedAt: new Date() })
+          .where(eq(events.id, input.eventId));
+      }
+
+      return { success: true };
+    }),
+
   // Get host capacity for a pool (used by creation UI)
   getHostCapacity: protectedProcedure
     .input(z.object({ poolId: z.string().uuid() }))

@@ -359,39 +359,39 @@ export default function PoolDashboardPage({
                       <div
                         className={`w-1.5 shrink-0 bg-gradient-to-b ${eventBannerGradient(event.title)}`}
                       />
-                      <div className="flex-1 py-4 px-5">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h3 className="font-medium text-walnut group-hover:text-barn transition-colors">
+                      <div className="flex-1 py-3 sm:py-4 px-3.5 sm:px-5 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
+                              <h3 className="font-medium text-walnut group-hover:text-barn transition-colors text-sm sm:text-base">
                                 {event.title}
                               </h3>
-                              <Badge variant={statusBadge(event.status)}>
+                              <Badge variant={statusBadge(event.status)} className="text-[10px] shrink-0">
                                 {event.status.replace("_", " ")}
                               </Badge>
                               {event.hostingType === "group" && (
-                                <Badge variant="outline" className="text-[10px]">
+                                <Badge variant="outline" className="text-[10px] shrink-0">
                                   <Users className="h-2.5 w-2.5 mr-0.5" />
                                   Group
                                 </Badge>
                               )}
                             </div>
-                            <div className="flex items-center gap-4 text-xs text-walnut-muted">
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-walnut-muted">
                               <span className="flex items-center gap-1">
-                                <CalendarDays className="h-3 w-3" />
+                                <CalendarDays className="h-3 w-3 shrink-0" />
                                 {formatDate(new Date(event.dateStart))}
                               </span>
                               {event.locationName && (
-                                <span className="flex items-center gap-1">
-                                  <MapPin className="h-3 w-3" />
+                                <span className="flex items-center gap-1 truncate max-w-[140px]">
+                                  <MapPin className="h-3 w-3 shrink-0" />
                                   {event.locationName}
                                 </span>
                               )}
-                              <span>
+                              <span className="truncate">
                                 by {event.host.displayName}
                               </span>
                             </div>
-                            <div className="mt-2.5 flex items-center gap-2">
+                            <div className="mt-2 sm:mt-2.5 flex items-center gap-2">
                               <Progress
                                 value={event.hoursClaimed}
                                 max={event.totalHoursNeeded}
@@ -402,7 +402,7 @@ export default function PoolDashboardPage({
                               </span>
                             </div>
                           </div>
-                          <ArrowRight className="h-4 w-4 text-earth ml-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+                          <ArrowRight className="h-4 w-4 text-earth ml-2 shrink-0 hidden sm:block opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
                         </div>
                       </div>
                     </div>

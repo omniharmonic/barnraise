@@ -220,7 +220,7 @@ export default function CreateEventPage({
                 The best events feel like a party where work happens.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-walnut mb-1.5">
                   Start Date &amp; Time *
@@ -366,7 +366,7 @@ export default function CreateEventPage({
             <CardDescription>How much help do you need?</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
               <div>
                 <label className="block text-sm font-medium text-walnut mb-1.5">
                   Total Hours *

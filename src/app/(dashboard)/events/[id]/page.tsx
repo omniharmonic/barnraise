@@ -54,6 +54,8 @@ export default function EventDetailPage({
   const [editClaimHours, setEditClaimHours] = useState(0);
   const [pledgeHours, setPledgeHours] = useState(1);
   const [showPledgeForm, setShowPledgeForm] = useState(false);
+  const [editingPledge, setEditingPledge] = useState(false);
+  const [editPledgeHours, setEditPledgeHours] = useState(1);
 
   const claimMutation = useMutation({
     ...trpc.events.claim.mutationOptions(),
@@ -92,6 +94,14 @@ export default function EventDetailPage({
   const withdrawPledgeMutation = useMutation({
     ...trpc.events.withdrawPledge.mutationOptions(),
     onSuccess: () => queryClient.invalidateQueries(),
+  });
+
+  const updatePledgeMutation = useMutation({
+    ...trpc.events.updatePledge.mutationOptions(),
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+      setEditingPledge(false);
+    },
   });
 
   if (isLoading) {
@@ -494,22 +504,78 @@ export default function EventDetailPage({
                   </>
                 )}
 
-              {/* Withdraw pledge */}
-              {myPledge && event.status === "pledging" && !isHost && (
+              {/* My pledge — view / edit / withdraw */}
+              {myPledge && event.status === "pledging" && !editingPledge && (
                 <div className="flex items-center justify-between p-3.5 bg-golden-light/50 rounded-xl border border-golden/30">
                   <span className="text-sm text-walnut">
                     You pledged <span className="font-mono font-medium">{myPledge.hoursPledged}h</span>
                   </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      withdrawPledgeMutation.mutate({ eventId })
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setEditPledgeHours(myPledge.hoursPledged);
+                        setEditingPledge(true);
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    {!isHost && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          withdrawPledgeMutation.mutate({ eventId })
+                        }
+                        disabled={withdrawPledgeMutation.isPending}
+                      >
+                        Withdraw
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+              {myPledge && event.status === "pledging" && editingPledge && (
+                <div className="space-y-3 p-4 bg-cream-dark/50 rounded-xl">
+                  <label className="block text-sm font-medium text-walnut">
+                    Update your pledge
+                  </label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={editPledgeHours}
+                    onChange={(e) =>
+                      setEditPledgeHours(parseInt(e.target.value) || 1)
                     }
-                    disabled={withdrawPledgeMutation.isPending}
-                  >
-                    Withdraw
-                  </Button>
+                  />
+                  {updatePledgeMutation.error && (
+                    <p className="text-xs text-red-600">
+                      {updatePledgeMutation.error.message}
+                    </p>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      className="flex-1"
+                      onClick={() =>
+                        updatePledgeMutation.mutate({
+                          eventId,
+                          hoursPledged: editPledgeHours,
+                        })
+                      }
+                      disabled={updatePledgeMutation.isPending}
+                    >
+                      {updatePledgeMutation.isPending
+                        ? "Saving..."
+                        : `Update to ${editPledgeHours}h`}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setEditingPledge(false)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
