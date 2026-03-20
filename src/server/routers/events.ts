@@ -42,6 +42,61 @@ async function getAccountBalance(db: any, poolId: string, accountId: string): Pr
   return Number(result.balance);
 }
 
+/**
+ * Compute hours a user has committed but not yet been debited for in a pool.
+ * This includes:
+ * 1. Active pledges on group events not yet verified/cancelled
+ * 2. Solo events they're hosting that haven't been verified yet
+ *
+ * These are "reserved" hours — they'll be spent at verification time,
+ * so they must reduce available capacity to prevent overselling.
+ */
+async function getPendingCommitments(
+  db: any,
+  poolId: string,
+  accountId: string,
+  excludeEventId?: string
+): Promise<number> {
+  // 1. Active pledges on group events
+  const [pledgeResult] = await db
+    .select({
+      total: sql<number>`coalesce(sum(${eventPledges.hoursPledged}), 0)::numeric`,
+    })
+    .from(eventPledges)
+    .innerJoin(events, eq(events.id, eventPledges.eventId))
+    .where(
+      and(
+        eq(eventPledges.accountId, accountId),
+        eq(eventPledges.status, "active"),
+        eq(events.poolId, poolId),
+        sql`${events.status} not in ('verified', 'cancelled')`,
+        excludeEventId
+          ? sql`${events.id} != ${excludeEventId}`
+          : undefined
+      )
+    );
+
+  // 2. Solo events hosted but not verified (full totalHoursNeeded is their liability)
+  const [soloResult] = await db
+    .select({
+      total: sql<number>`coalesce(sum(${events.totalHoursNeeded}), 0)::numeric`,
+    })
+    .from(events)
+    .where(
+      and(
+        eq(events.hostId, accountId),
+        eq(events.poolId, poolId),
+        eq(events.hostingType, "solo"),
+        sql`${events.status} in ('open', 'confirmed', 'in_progress', 'completed')`,
+        excludeEventId
+          ? sql`${events.id} != ${excludeEventId}`
+          : undefined
+      )
+    );
+
+  return Number(pledgeResult.total) + Number(soloResult.total);
+}
+
 /** Largest-remainder method for splitting integer hours proportionally */
 function splitProportional(total: number, pledges: { accountId: string; hours: number }[]): Map<string, number> {
   const totalPledged = pledges.reduce((s, p) => s + p.hours, 0);
@@ -97,14 +152,16 @@ export const eventsRouter = router({
       if (!pool) throw new TRPCError({ code: "NOT_FOUND", message: "Pool not found" });
 
       const hostBalance = await getAccountBalance(ctx.db, input.poolId, ctx.userId);
-      const capacity = hostBalance + Math.abs(pool.maxNegativeBalance);
+      const pending = await getPendingCommitments(ctx.db, input.poolId, ctx.userId);
+      const grossCapacity = hostBalance + Math.abs(pool.maxNegativeBalance);
+      const capacity = Math.max(0, grossCapacity - pending);
 
       if (input.hostingType === "solo") {
-        // Solo: balance check at creation
+        // Solo: balance check at creation (accounting for pending commitments)
         if (input.totalHoursNeeded > capacity) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: `Your capacity is ${capacity}h (balance ${hostBalance}h + pool limit ${Math.abs(pool.maxNegativeBalance)}h). Try group hosting to pool balances with co-hosts.`,
+            message: `Your available capacity is ${capacity}h (balance ${hostBalance}h + limit ${Math.abs(pool.maxNegativeBalance)}h${pending > 0 ? ` − ${pending}h already committed` : ""}). Try group hosting to split the cost.`,
           });
         }
 
@@ -178,7 +235,7 @@ export const eventsRouter = router({
       if (hostPledgeHours > capacity) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: `You can pledge up to ${capacity}h (balance ${hostBalance}h + pool limit ${Math.abs(pool.maxNegativeBalance)}h).`,
+          message: `You can pledge up to ${capacity}h (balance ${hostBalance}h + limit ${Math.abs(pool.maxNegativeBalance)}h${pending > 0 ? ` − ${pending}h committed` : ""}).`,
         });
       }
 
@@ -1050,18 +1107,19 @@ export const eventsRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Must be a pool member" });
       }
 
-      // Validate pledger's balance can support the pledge
+      // Validate pledger's balance can support the pledge (accounting for other commitments)
       const pool = await ctx.db.query.pools.findFirst({
         where: eq(pools.id, event.poolId),
       });
       if (!pool) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
       const balance = await getAccountBalance(ctx.db, event.poolId, ctx.userId);
-      const capacity = balance + Math.abs(pool.maxNegativeBalance);
+      const pending = await getPendingCommitments(ctx.db, event.poolId, ctx.userId, input.eventId);
+      const capacity = Math.max(0, balance + Math.abs(pool.maxNegativeBalance) - pending);
       if (input.hoursPledged > capacity) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: `You can pledge up to ${capacity}h (balance ${balance}h + pool limit ${Math.abs(pool.maxNegativeBalance)}h).`,
+          message: `You can pledge up to ${capacity}h (balance ${balance}h + limit ${Math.abs(pool.maxNegativeBalance)}h${pending > 0 ? ` − ${pending}h committed` : ""}).`,
         });
       }
 
@@ -1230,11 +1288,13 @@ export const eventsRouter = router({
       if (!pool) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
       const balance = await getAccountBalance(ctx.db, event.poolId, ctx.userId);
-      const capacity = balance + Math.abs(pool.maxNegativeBalance);
+      // Exclude this event's pledge from pending since we're replacing it
+      const pending = await getPendingCommitments(ctx.db, event.poolId, ctx.userId, input.eventId);
+      const capacity = Math.max(0, balance + Math.abs(pool.maxNegativeBalance) - pending);
       if (input.hoursPledged > capacity) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: `You can pledge up to ${capacity}h.`,
+          message: `You can pledge up to ${capacity}h${pending > 0 ? ` (${pending}h committed elsewhere)` : ""}.`,
         });
       }
 
@@ -1277,9 +1337,17 @@ export const eventsRouter = router({
       if (!pool) throw new TRPCError({ code: "NOT_FOUND" });
 
       const balance = await getAccountBalance(ctx.db, input.poolId, ctx.userId);
-      const capacity = balance + Math.abs(pool.maxNegativeBalance);
+      const pending = await getPendingCommitments(ctx.db, input.poolId, ctx.userId);
+      const grossCapacity = balance + Math.abs(pool.maxNegativeBalance);
+      const capacity = Math.max(0, grossCapacity - pending);
 
-      return { balance, capacity, maxNegativeBalance: pool.maxNegativeBalance };
+      return {
+        balance,
+        capacity,
+        grossCapacity,
+        pendingCommitments: pending,
+        maxNegativeBalance: pool.maxNegativeBalance,
+      };
     }),
 
   // Cross-pool: events the user has claimed

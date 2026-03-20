@@ -63,6 +63,8 @@ export default function CreateEventPage({
   const createEvent = useMutation(trpc.events.create.mutationOptions());
 
   const capacity = capacityData?.capacity ?? 0;
+  const grossCapacity = capacityData?.grossCapacity ?? 0;
+  const pendingCommitments = capacityData?.pendingCommitments ?? 0;
   const balance = capacityData?.balance ?? 0;
   const maxNeg = capacityData?.maxNegativeBalance ?? 0;
   const overCapacity = form.hostingType === "solo" && form.totalHoursNeeded > capacity;
@@ -306,11 +308,15 @@ export default function CreateEventPage({
             {form.hostingType === "solo" && capacityData && (
               <div className="mt-4">
                 <div className="text-sm text-walnut-muted">
-                  Your capacity:{" "}
+                  Available capacity:{" "}
                   <span className="font-mono font-medium text-walnut">{capacity}h</span>
                   <span className="text-walnut-muted/60 ml-1.5 text-xs">
                     (balance <span className="font-mono">{balance}h</span> + limit{" "}
-                    <span className="font-mono">{Math.abs(maxNeg)}h</span>)
+                    <span className="font-mono">{Math.abs(maxNeg)}h</span>
+                    {pendingCommitments > 0 && (
+                      <> − <span className="font-mono">{pendingCommitments}h</span> committed</>
+                    )}
+                    )
                   </span>
                 </div>
                 {overCapacity && (
@@ -352,7 +358,7 @@ export default function CreateEventPage({
                   }
                 />
                 <p className="text-xs text-walnut-muted">
-                  Your capacity: <span className="font-mono">{capacity}h</span>.
+                  Available capacity: <span className="font-mono">{capacity}h</span>{pendingCommitments > 0 && <> (<span className="font-mono">{pendingCommitments}h</span> committed elsewhere)</>}.
                   Other pool members can pledge the remaining hours.
                 </p>
               </div>
