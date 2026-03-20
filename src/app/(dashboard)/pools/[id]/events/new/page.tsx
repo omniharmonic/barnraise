@@ -222,31 +222,27 @@ export default function CreateEventPage({
                 The best events feel like a party where work happens.
               </p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="min-w-0">
-                <label className="block text-sm font-medium text-walnut mb-1.5">
-                  Start Date &amp; Time *
-                </label>
-                <Input
-                  type="datetime-local"
-                  value={form.dateStart}
-                  onChange={(e) => setForm({ ...form, dateStart: e.target.value })}
-                  required
-                  className="max-w-full"
-                />
-              </div>
-              <div className="min-w-0">
-                <label className="block text-sm font-medium text-walnut mb-1.5">
-                  End Date &amp; Time *
-                </label>
-                <Input
-                  type="datetime-local"
-                  value={form.dateEnd}
-                  onChange={(e) => setForm({ ...form, dateEnd: e.target.value })}
-                  required
-                  className="max-w-full"
-                />
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-walnut mb-1.5">
+                Start Date &amp; Time *
+              </label>
+              <Input
+                type="datetime-local"
+                value={form.dateStart}
+                onChange={(e) => setForm({ ...form, dateStart: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-walnut mb-1.5">
+                End Date &amp; Time *
+              </label>
+              <Input
+                type="datetime-local"
+                value={form.dateEnd}
+                onChange={(e) => setForm({ ...form, dateEnd: e.target.value })}
+                required
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-walnut mb-1.5">
