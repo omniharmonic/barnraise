@@ -392,14 +392,30 @@ export default function PoolDashboardPage({
                               </span>
                             </div>
                             <div className="mt-2 sm:mt-2.5 flex items-center gap-2">
-                              <Progress
-                                value={event.hoursClaimed}
-                                max={event.totalHoursNeeded}
-                                className="flex-1 h-1.5"
-                              />
-                              <span className="text-xs text-walnut-muted font-mono whitespace-nowrap">
-                                {event.hoursClaimed}/{event.totalHoursNeeded}h
-                              </span>
+                              {event.status === "pledging" ? (
+                                <>
+                                  <Progress
+                                    value={event.hoursPledged}
+                                    max={event.totalHoursNeeded}
+                                    variant="golden"
+                                    className="flex-1 h-1.5"
+                                  />
+                                  <span className="text-xs text-walnut-muted font-mono whitespace-nowrap">
+                                    {event.hoursPledged}/{event.totalHoursNeeded}h pledged
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <Progress
+                                    value={event.hoursClaimed}
+                                    max={event.totalHoursNeeded}
+                                    className="flex-1 h-1.5"
+                                  />
+                                  <span className="text-xs text-walnut-muted font-mono whitespace-nowrap">
+                                    {event.hoursClaimed}/{event.totalHoursNeeded}h
+                                  </span>
+                                </>
+                              )}
                             </div>
                           </div>
                           <ArrowRight className="h-4 w-4 text-earth ml-2 shrink-0 hidden sm:block opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
