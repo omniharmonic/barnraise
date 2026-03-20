@@ -26,6 +26,7 @@ import {
   Trash2,
   Calendar,
   Navigation,
+  Layers,
 } from "lucide-react";
 import { formatDate, formatHours } from "@/lib/utils";
 import { eventBannerGradient } from "@/lib/utils/event-banners";
@@ -46,6 +47,7 @@ export default function EventDetailPage({
   );
 
   const [claimHours, setClaimHours] = useState(0);
+  const [selectedWorkAreaId, setSelectedWorkAreaId] = useState<string | null>(null);
   const [showClaimForm, setShowClaimForm] = useState(false);
   const [copied, setCopied] = useState(false);
   const [editingClaim, setEditingClaim] = useState(false);
@@ -614,6 +616,81 @@ export default function EventDetailPage({
         </CardContent>
       </Card>
 
+      {/* Work Areas breakdown */}
+      {event.workAreas && event.workAreas.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <Layers className="h-4 w-4 inline mr-2" />
+              Work Areas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {event.workAreas.map((wa) => {
+                const areaClaims = activeClaims.filter(
+                  (c) => c.workAreaId === wa.id
+                );
+                const areaHours = areaClaims.reduce(
+                  (sum, c) => sum + c.hoursCommitted,
+                  0
+                );
+                return (
+                  <div key={wa.id} className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-walnut">
+                        {wa.name}
+                      </span>
+                      <span className="text-xs text-walnut-muted">
+                        <span className="font-mono font-medium text-walnut">
+                          {areaClaims.length}
+                        </span>{" "}
+                        {areaClaims.length === 1 ? "person" : "people"}
+                        {wa.targetHours && (
+                          <>
+                            {" "}&middot;{" "}
+                            <span className="font-mono">{areaHours}</span>/
+                            <span className="font-mono">{wa.targetHours}</span>h
+                          </>
+                        )}
+                      </span>
+                    </div>
+                    {wa.targetHours && (
+                      <Progress
+                        value={areaHours}
+                        max={wa.targetHours}
+                        variant="sage"
+                        className="h-1.5"
+                      />
+                    )}
+                  </div>
+                );
+              })}
+              {/* General (unassigned) */}
+              {(() => {
+                const generalClaims = activeClaims.filter(
+                  (c) => !c.workAreaId
+                );
+                if (generalClaims.length > 0) {
+                  return (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-walnut-muted">General</span>
+                      <span className="text-xs text-walnut-muted">
+                        <span className="font-mono font-medium text-walnut">
+                          {generalClaims.length}
+                        </span>{" "}
+                        {generalClaims.length === 1 ? "person" : "people"}
+                      </span>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Participants */}
       <Card>
         <CardHeader>
@@ -622,30 +699,42 @@ export default function EventDetailPage({
         <CardContent>
           {activeClaims.length > 0 ? (
             <div className="space-y-1">
-              {activeClaims.map((claim) => (
-                <div
-                  key={claim.id}
-                  className="flex items-center justify-between py-2.5 px-3 rounded-xl hover:bg-cream-dark/50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <AvatarCircle
-                      src={claim.account.avatarUrl}
-                      name={claim.account.displayName}
-                    />
-                    <span className="text-sm font-medium text-walnut">
-                      {claim.account.displayName}
-                    </span>
+              {activeClaims.map((claim) => {
+                const workArea = event.workAreas?.find(
+                  (wa) => wa.id === claim.workAreaId
+                );
+                return (
+                  <div
+                    key={claim.id}
+                    className="flex items-center justify-between py-2.5 px-3 rounded-xl hover:bg-cream-dark/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <AvatarCircle
+                        src={claim.account.avatarUrl}
+                        name={claim.account.displayName}
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-walnut">
+                          {claim.account.displayName}
+                        </span>
+                        {workArea && (
+                          <span className="text-xs text-walnut-muted ml-2">
+                            {workArea.name}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-sm text-walnut-muted font-mono">
+                        {claim.hoursCommitted}h
+                      </span>
+                      {claim.status === "verified_attended" && (
+                        <CheckCircle2 className="h-4 w-4 text-sage" />
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-sm text-walnut-muted font-mono">
-                      {claim.hoursCommitted}h
-                    </span>
-                    {claim.status === "verified_attended" && (
-                      <CheckCircle2 className="h-4 w-4 text-sage" />
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <p className="text-sm text-walnut-muted py-4 text-center">
@@ -680,6 +769,40 @@ export default function EventDetailPage({
               ) : (
                 <Card>
                   <CardContent className="pt-6 space-y-4">
+                    {event.workAreas && event.workAreas.length > 0 && (
+                      <div>
+                        <label className="block text-sm font-medium text-walnut mb-1.5">
+                          Work area
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedWorkAreaId(null)}
+                            className={`px-3 py-1.5 rounded-lg text-sm transition-all duration-150 cursor-pointer ${
+                              selectedWorkAreaId === null
+                                ? "bg-sage text-white"
+                                : "bg-cream-dark text-walnut hover:bg-earth/30"
+                            }`}
+                          >
+                            General
+                          </button>
+                          {event.workAreas.map((wa) => (
+                            <button
+                              key={wa.id}
+                              type="button"
+                              onClick={() => setSelectedWorkAreaId(wa.id)}
+                              className={`px-3 py-1.5 rounded-lg text-sm transition-all duration-150 cursor-pointer ${
+                                selectedWorkAreaId === wa.id
+                                  ? "bg-sage text-white"
+                                  : "bg-cream-dark text-walnut hover:bg-earth/30"
+                              }`}
+                            >
+                              {wa.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div>
                       <label className="block text-sm font-medium text-walnut mb-1.5">
                         Hours you can commit
@@ -710,6 +833,7 @@ export default function EventDetailPage({
                           claimMutation.mutate({
                             eventId,
                             hoursCommitted: claimHours,
+                            workAreaId: selectedWorkAreaId,
                           })
                         }
                         disabled={claimMutation.isPending}
@@ -738,6 +862,10 @@ export default function EventDetailPage({
               <p className="text-sm font-medium text-sage-dark">
                 You&apos;re committed for{" "}
                 <span className="font-mono">{myClaim.hoursCommitted}</span> hours
+                {(() => {
+                  const myWa = event.workAreas?.find((wa) => wa.id === myClaim.workAreaId);
+                  return myWa ? ` on ${myWa.name}` : "";
+                })()}
               </p>
               <p className="text-xs text-sage-dark/70">
                 Show up and earn labor hours!
@@ -750,6 +878,7 @@ export default function EventDetailPage({
                   size="sm"
                   onClick={() => {
                     setEditClaimHours(myClaim.hoursCommitted);
+                    setSelectedWorkAreaId(myClaim.workAreaId ?? null);
                     setEditingClaim(true);
                   }}
                 >
@@ -770,6 +899,40 @@ export default function EventDetailPage({
         {myClaim && editingClaim && (
           <Card>
             <CardContent className="pt-6 space-y-4">
+              {event.workAreas && event.workAreas.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-walnut mb-1.5">
+                    Work area
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedWorkAreaId(null)}
+                      className={`px-3 py-1.5 rounded-lg text-sm transition-all duration-150 cursor-pointer ${
+                        selectedWorkAreaId === null
+                          ? "bg-sage text-white"
+                          : "bg-cream-dark text-walnut hover:bg-earth/30"
+                      }`}
+                    >
+                      General
+                    </button>
+                    {event.workAreas.map((wa) => (
+                      <button
+                        key={wa.id}
+                        type="button"
+                        onClick={() => setSelectedWorkAreaId(wa.id)}
+                        className={`px-3 py-1.5 rounded-lg text-sm transition-all duration-150 cursor-pointer ${
+                          selectedWorkAreaId === wa.id
+                            ? "bg-sage text-white"
+                            : "bg-cream-dark text-walnut hover:bg-earth/30"
+                        }`}
+                      >
+                        {wa.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-walnut mb-1.5">
                   Update your committed hours
@@ -785,7 +948,11 @@ export default function EventDetailPage({
                 <Button
                   className="flex-1"
                   onClick={() =>
-                    updateClaimMutation.mutate({ eventId, hoursCommitted: editClaimHours })
+                    updateClaimMutation.mutate({
+                      eventId,
+                      hoursCommitted: editClaimHours,
+                      workAreaId: selectedWorkAreaId,
+                    })
                   }
                   disabled={updateClaimMutation.isPending}
                 >

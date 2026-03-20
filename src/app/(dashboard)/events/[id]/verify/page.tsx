@@ -17,6 +17,7 @@ interface VerificationEntry {
   hoursCommitted: number;
   attended: boolean;
   actualHours: number;
+  workAreaName?: string;
 }
 
 /** Largest-remainder proportional split (mirrors backend logic) */
@@ -71,6 +72,7 @@ export default function VerifyEventPage({
         hoursCommitted: c.hoursCommitted,
         attended: true,
         actualHours: c.hoursCommitted,
+        workAreaName: event.workAreas?.find((wa) => wa.id === c.workAreaId)?.name,
       }))
     );
     setInitialized(true);
@@ -193,7 +195,14 @@ export default function VerifyEventPage({
                       )}
                     </button>
                     <div>
-                      <div className="font-medium text-walnut">{v.name}</div>
+                      <div className="font-medium text-walnut">
+                        {v.name}
+                        {v.workAreaName && (
+                          <span className="text-xs font-normal text-walnut-muted ml-2">
+                            {v.workAreaName}
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-walnut-muted">
                         Committed <span className="font-mono">{v.hoursCommitted}h</span>
                       </div>

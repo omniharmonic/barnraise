@@ -7,9 +7,9 @@ import { useTRPC } from "@/lib/trpc/react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Trash2, AlertTriangle, ArrowLeft } from "lucide-react";
+import { Trash2, AlertTriangle, ArrowLeft, Plus, X, Layers } from "lucide-react";
 import Link from "next/link";
 
 const SKILL_OPTIONS = [
@@ -49,8 +49,10 @@ export default function EditEventPage({
     minParticipants: 1,
     flexibleHours: true,
     skillTags: [] as string[],
+    workAreas: [] as { name: string; targetHours: number | null }[],
   });
   const [initialized, setInitialized] = useState(false);
+  const [newWorkArea, setNewWorkArea] = useState("");
 
   useEffect(() => {
     if (event && !initialized) {
@@ -65,6 +67,10 @@ export default function EditEventPage({
         minParticipants: event.minParticipants ?? 1,
         flexibleHours: event.flexibleHours ?? true,
         skillTags: event.skillTags || [],
+        workAreas: (event.workAreas || []).map((wa: { name: string; targetHours: number | null }) => ({
+          name: wa.name,
+          targetHours: wa.targetHours,
+        })),
       });
       setInitialized(true);
     }
@@ -136,6 +142,7 @@ export default function EditEventPage({
       minParticipants: form.minParticipants,
       flexibleHours: form.flexibleHours,
       skillTags: form.skillTags.length > 0 ? form.skillTags : undefined,
+      workAreas: form.workAreas,
     });
   };
 
@@ -301,6 +308,138 @@ export default function EditEventPage({
                   </Badge>
                 </button>
               ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Work Areas */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>
+              <Layers className="h-4 w-4 inline mr-2" />
+              Work Areas
+            </CardTitle>
+            <CardDescription>
+              Split the event into teams or projects. People choose which area to join.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {form.workAreas.length > 0 && (
+              <div className="space-y-2">
+                {form.workAreas.map((wa, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 p-3 rounded-xl bg-cream-dark/50"
+                  >
+                    <span className="text-sm font-medium text-walnut flex-1">
+                      {wa.name}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={form.totalHoursNeeded}
+                        placeholder="hrs"
+                        value={wa.targetHours ?? ""}
+                        onChange={(e) => {
+                          const val = e.target.value
+                            ? parseInt(e.target.value) || null
+                            : null;
+                          setForm((f) => ({
+                            ...f,
+                            workAreas: f.workAreas.map((w, j) =>
+                              j === i ? { ...w, targetHours: val } : w
+                            ),
+                          }));
+                        }}
+                        className="w-16 text-center text-sm"
+                      />
+                      <span className="text-xs text-walnut-muted">hrs</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm((f) => ({
+                          ...f,
+                          workAreas: f.workAreas.filter((_, j) => j !== i),
+                        }))
+                      }
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-walnut-muted hover:text-barn hover:bg-barn-light/50 transition-colors cursor-pointer"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {(() => {
+                  const allocatedHours = form.workAreas.reduce(
+                    (sum, w) => sum + (w.targetHours || 0),
+                    0
+                  );
+                  const remaining = form.totalHoursNeeded - allocatedHours;
+                  if (allocatedHours > 0 && remaining !== form.totalHoursNeeded) {
+                    return (
+                      <div className="flex justify-between text-xs text-walnut-muted px-3 pt-1">
+                        <span>
+                          Allocated: <span className="font-mono font-medium text-walnut">{allocatedHours}h</span> of{" "}
+                          <span className="font-mono">{form.totalHoursNeeded}h</span>
+                        </span>
+                        {remaining > 0 && (
+                          <span>
+                            <span className="font-mono">{remaining}h</span> unallocated (General)
+                          </span>
+                        )}
+                        {remaining < 0 && (
+                          <span className="text-barn">
+                            <span className="font-mono">{Math.abs(remaining)}h</span> over-allocated
+                          </span>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Input
+                value={newWorkArea}
+                onChange={(e) => setNewWorkArea(e.target.value)}
+                placeholder="Add a work area..."
+                className="flex-1"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    const trimmed = newWorkArea.trim();
+                    if (trimmed && !form.workAreas.some((wa) => wa.name === trimmed)) {
+                      setForm((f) => ({
+                        ...f,
+                        workAreas: [...f.workAreas, { name: trimmed, targetHours: null }],
+                      }));
+                      setNewWorkArea("");
+                    }
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const trimmed = newWorkArea.trim();
+                  if (trimmed && !form.workAreas.some((wa) => wa.name === trimmed)) {
+                    setForm((f) => ({
+                      ...f,
+                      workAreas: [...f.workAreas, { name: trimmed, targetHours: null }],
+                    }));
+                    setNewWorkArea("");
+                  }
+                }}
+                disabled={!newWorkArea.trim()}
+                className="shrink-0"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add
+              </Button>
             </div>
           </CardContent>
         </Card>

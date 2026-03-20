@@ -13,6 +13,7 @@ import {
   events,
   eventClaims,
   eventPledges,
+  eventWorkAreas,
   pools,
   poolMemberships,
   pointTransactions,
@@ -187,6 +188,18 @@ export const eventsRouter = router({
           })
           .returning();
 
+        // Insert work areas if provided
+        if (input.workAreas && input.workAreas.length > 0) {
+          await ctx.db.insert(eventWorkAreas).values(
+            input.workAreas.map((wa, i) => ({
+              eventId: event.id,
+              name: wa.name,
+              targetHours: wa.targetHours ?? null,
+              sortOrder: i,
+            }))
+          );
+        }
+
         // Merge new skill tags into pool's accumulated tags
         if (input.skillTags && input.skillTags.length > 0) {
           const existingTags = pool.skillTags || [];
@@ -269,6 +282,18 @@ export const eventsRouter = router({
         accountId: ctx.userId,
         hoursPledged: hostPledgeHours,
       });
+
+      // Insert work areas if provided
+      if (input.workAreas && input.workAreas.length > 0) {
+        await ctx.db.insert(eventWorkAreas).values(
+          input.workAreas.map((wa, i) => ({
+            eventId: event.id,
+            name: wa.name,
+            targetHours: wa.targetHours ?? null,
+            sortOrder: i,
+          }))
+        );
+      }
 
       // Merge new skill tags into pool's accumulated tags
       if (input.skillTags && input.skillTags.length > 0) {
@@ -380,6 +405,12 @@ export const eventsRouter = router({
         pledges = pledgeRows;
       }
 
+      // Get work areas
+      const workAreas = await ctx.db.query.eventWorkAreas.findMany({
+        where: eq(eventWorkAreas.eventId, input.eventId),
+        orderBy: eventWorkAreas.sortOrder,
+      });
+
       return {
         ...event,
         status: currentStatus,
@@ -393,6 +424,7 @@ export const eventsRouter = router({
           ...p.pledge,
           account: p.account,
         })),
+        workAreas,
       };
     }),
 
@@ -448,6 +480,23 @@ export const eventsRouter = router({
         .set(setValues)
         .where(eq(events.id, eventId))
         .returning();
+
+      // Replace work areas if provided
+      if (updates.workAreas !== undefined) {
+        await ctx.db
+          .delete(eventWorkAreas)
+          .where(eq(eventWorkAreas.eventId, eventId));
+        if (updates.workAreas.length > 0) {
+          await ctx.db.insert(eventWorkAreas).values(
+            updates.workAreas.map((wa, i) => ({
+              eventId,
+              name: wa.name,
+              targetHours: wa.targetHours ?? null,
+              sortOrder: i,
+            }))
+          );
+        }
+      }
 
       return updated;
     }),
@@ -558,6 +607,7 @@ export const eventsRouter = router({
           .set({
             status: "claimed",
             hoursCommitted: input.hoursCommitted,
+            workAreaId: input.workAreaId ?? null,
             hoursVerified: null,
             cancelledAt: null,
             lateCancel: false,
@@ -573,6 +623,7 @@ export const eventsRouter = router({
             eventId: input.eventId,
             accountId: ctx.userId,
             hoursCommitted: input.hoursCommitted,
+            workAreaId: input.workAreaId ?? null,
           })
           .returning();
       }
@@ -670,7 +721,11 @@ export const eventsRouter = router({
     }),
 
   updateClaim: protectedProcedure
-    .input(z.object({ eventId: z.string().uuid(), hoursCommitted: z.number().int().min(1) }))
+    .input(z.object({
+      eventId: z.string().uuid(),
+      hoursCommitted: z.number().int().min(1),
+      workAreaId: z.string().uuid().nullish(),
+    }))
     .mutation(async ({ ctx, input }) => {
       const claim = await ctx.db.query.eventClaims.findFirst({
         where: and(
@@ -692,7 +747,10 @@ export const eventsRouter = router({
 
       await ctx.db
         .update(eventClaims)
-        .set({ hoursCommitted: input.hoursCommitted })
+        .set({
+          hoursCommitted: input.hoursCommitted,
+          workAreaId: input.workAreaId ?? null,
+        })
         .where(eq(eventClaims.id, claim.id));
 
       await ctx.db

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { User, Users, AlertTriangle, ImagePlus, X, Plus, ArrowLeft } from "lucide-react";
+import { User, Users, AlertTriangle, ImagePlus, X, Plus, ArrowLeft, Layers } from "lucide-react";
 import Link from "next/link";
 
 const DEFAULT_SKILLS = [
@@ -47,9 +47,11 @@ export default function CreateEventPage({
     hostingType: "solo" as "solo" | "group",
     hostPledgeHours: 4,
     bannerImageUrl: "",
+    workAreas: [] as { name: string; targetHours: number | null }[],
   });
 
   const [newSkill, setNewSkill] = useState("");
+  const [newWorkArea, setNewWorkArea] = useState("");
   const [bannerPreview, setBannerPreview] = useState<string | null>(null);
   const [uploadingBanner, setUploadingBanner] = useState(false);
 
@@ -97,6 +99,7 @@ export default function CreateEventPage({
       dateEnd: new Date(form.dateEnd).toISOString(),
       hostPledgeHours: form.hostingType === "group" ? form.hostPledgeHours : undefined,
       bannerImageUrl: form.bannerImageUrl || undefined,
+      workAreas: form.workAreas.length > 0 ? form.workAreas : undefined,
     });
     router.push(`/events/${event.id}`);
   };
@@ -490,6 +493,145 @@ export default function CreateEventPage({
                 size="sm"
                 onClick={addCustomSkill}
                 disabled={!newSkill.trim()}
+                className="shrink-0"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Work Areas (optional) */}
+        <Card className="mb-6 animate-fade-in-up stagger-5">
+          <CardHeader>
+            <CardTitle>
+              <Layers className="h-4 w-4 inline mr-2" />
+              Work Areas
+            </CardTitle>
+            <CardDescription>
+              Optionally split the event into teams or projects (e.g., Packing, Cleaning, Cooking).
+              People can choose which area to join when claiming a slot.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {form.workAreas.length > 0 && (
+              <div className="space-y-2">
+                {form.workAreas.map((wa, i) => {
+                  const allocatedHours = form.workAreas.reduce(
+                    (sum, w) => sum + (w.targetHours || 0),
+                    0
+                  );
+                  return (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 p-3 rounded-xl bg-cream-dark/50"
+                    >
+                      <span className="text-sm font-medium text-walnut flex-1">
+                        {wa.name}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          type="number"
+                          min={0}
+                          max={form.totalHoursNeeded}
+                          placeholder="hrs"
+                          value={wa.targetHours ?? ""}
+                          onChange={(e) => {
+                            const val = e.target.value
+                              ? parseInt(e.target.value) || null
+                              : null;
+                            setForm((f) => ({
+                              ...f,
+                              workAreas: f.workAreas.map((w, j) =>
+                                j === i ? { ...w, targetHours: val } : w
+                              ),
+                            }));
+                          }}
+                          className="w-16 text-center text-sm"
+                        />
+                        <span className="text-xs text-walnut-muted">hrs</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => ({
+                            ...f,
+                            workAreas: f.workAreas.filter((_, j) => j !== i),
+                          }))
+                        }
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-walnut-muted hover:text-barn hover:bg-barn-light/50 transition-colors cursor-pointer"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+                {(() => {
+                  const allocatedHours = form.workAreas.reduce(
+                    (sum, w) => sum + (w.targetHours || 0),
+                    0
+                  );
+                  const remaining = form.totalHoursNeeded - allocatedHours;
+                  if (allocatedHours > 0 && remaining !== form.totalHoursNeeded) {
+                    return (
+                      <div className="flex justify-between text-xs text-walnut-muted px-3 pt-1">
+                        <span>
+                          Allocated: <span className="font-mono font-medium text-walnut">{allocatedHours}h</span> of{" "}
+                          <span className="font-mono">{form.totalHoursNeeded}h</span>
+                        </span>
+                        {remaining > 0 && (
+                          <span>
+                            <span className="font-mono">{remaining}h</span> unallocated (General)
+                          </span>
+                        )}
+                        {remaining < 0 && (
+                          <span className="text-barn">
+                            <span className="font-mono">{Math.abs(remaining)}h</span> over-allocated
+                          </span>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Input
+                value={newWorkArea}
+                onChange={(e) => setNewWorkArea(e.target.value)}
+                placeholder="Add a work area..."
+                className="flex-1"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    const trimmed = newWorkArea.trim();
+                    if (trimmed && !form.workAreas.some((wa) => wa.name === trimmed)) {
+                      setForm((f) => ({
+                        ...f,
+                        workAreas: [...f.workAreas, { name: trimmed, targetHours: null }],
+                      }));
+                      setNewWorkArea("");
+                    }
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const trimmed = newWorkArea.trim();
+                  if (trimmed && !form.workAreas.some((wa) => wa.name === trimmed)) {
+                    setForm((f) => ({
+                      ...f,
+                      workAreas: [...f.workAreas, { name: trimmed, targetHours: null }],
+                    }));
+                    setNewWorkArea("");
+                  }
+                }}
+                disabled={!newWorkArea.trim()}
                 className="shrink-0"
               >
                 <Plus className="h-3.5 w-3.5" />

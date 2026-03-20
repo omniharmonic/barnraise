@@ -3,6 +3,7 @@ export * from "./pools";
 export * from "./vouchers";
 export * from "./events";
 export * from "./event-claims";
+export * from "./event-work-areas";
 export * from "./event-pledges";
 export * from "./point-transactions";
 export * from "./audit-log";

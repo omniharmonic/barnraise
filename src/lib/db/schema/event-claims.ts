@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { events } from "./events";
 import { accounts } from "./accounts";
+import { eventWorkAreas } from "./event-work-areas";
 
 export const eventClaims = pgTable(
   "event_claims",
@@ -23,6 +24,11 @@ export const eventClaims = pgTable(
       .references(() => accounts.id),
 
     hoursCommitted: integer("hours_committed").notNull(),
+
+    // Optional: which work area this person is joining
+    workAreaId: uuid("work_area_id").references(() => eventWorkAreas.id, {
+      onDelete: "set null",
+    }),
 
     status: text("status").notNull().default("claimed"),
 

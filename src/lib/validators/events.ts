@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+const workAreaSchema = z.object({
+  name: z.string().min(1).max(100),
+  targetHours: z.number().int().min(1).nullish(),
+});
+
 export const createEventSchema = z.object({
   poolId: z.string().uuid(),
   title: z.string().min(2).max(200),
@@ -16,6 +21,7 @@ export const createEventSchema = z.object({
   bannerImageUrl: z.string().max(2000).optional(),
   hostingType: z.enum(["solo", "group"]).default("solo"),
   hostPledgeHours: z.number().int().min(1).optional(),
+  workAreas: z.array(workAreaSchema).max(10).optional(),
 });
 
 export const updateEventSchema = z.object({
@@ -32,11 +38,13 @@ export const updateEventSchema = z.object({
   skillTags: z.array(z.string()).max(10).optional(),
   potluckUrl: z.string().url().nullish(),
   bannerImageUrl: z.string().url().max(2000).nullish(),
+  workAreas: z.array(workAreaSchema).max(10).optional(),
 });
 
 export const claimEventSchema = z.object({
   eventId: z.string().uuid(),
   hoursCommitted: z.number().int().min(1),
+  workAreaId: z.string().uuid().nullish(),
 });
 
 export const verifyEventSchema = z.object({
