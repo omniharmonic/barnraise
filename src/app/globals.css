@@ -88,8 +88,20 @@
   input[type="datetime-local"],
   input[type="date"],
   input[type="time"] {
-    min-width: 0;
-    max-width: 100%;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden;
+  }
+
+  /* Shrink the native date picker icon on iOS */
+  input[type="datetime-local"]::-webkit-date-and-time-value {
+    text-align: left;
+  }
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    margin-left: 0;
+    padding-left: 0;
   }
 
   /* Display font for all headings */
