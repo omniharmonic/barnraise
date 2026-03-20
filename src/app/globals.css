@@ -84,16 +84,6 @@
     color: var(--color-barn-dark);
   }
 
-  /* Force date/time inputs to respect container width on mobile */
-  input[type="datetime-local"],
-  input[type="date"],
-  input[type="time"] {
-    max-width: 100%;
-    box-sizing: border-box;
-    -webkit-appearance: none;
-    appearance: none;
-  }
-
   /* Display font for all headings */
   h1, h2, h3 {
     font-family: var(--font-display);
