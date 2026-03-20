@@ -184,23 +184,31 @@ export default function EditEventPage({
               <label className="block text-sm font-medium text-walnut mb-1.5">
                 Start *
               </label>
-              <Input
-                type="datetime-local"
-                value={form.dateStart}
-                onChange={(e) => setForm({ ...form, dateStart: e.target.value })}
-                required
-              />
+              <div className="relative w-full" style={{ overflow: "hidden" }}>
+                <input
+                  type="datetime-local"
+                  value={form.dateStart}
+                  onChange={(e) => setForm({ ...form, dateStart: e.target.value })}
+                  required
+                  className="flex h-10 w-full rounded-xl border border-earth bg-cream-light px-3 py-2 text-base sm:text-sm text-walnut transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-barn/30 focus-visible:border-barn/50"
+                  style={{ maxWidth: "100%", WebkitAppearance: "none" }}
+                />
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-walnut mb-1.5">
                 End *
               </label>
-              <Input
-                type="datetime-local"
-                value={form.dateEnd}
-                onChange={(e) => setForm({ ...form, dateEnd: e.target.value })}
-                required
-              />
+              <div className="relative w-full" style={{ overflow: "hidden" }}>
+                <input
+                  type="datetime-local"
+                  value={form.dateEnd}
+                  onChange={(e) => setForm({ ...form, dateEnd: e.target.value })}
+                  required
+                  className="flex h-10 w-full rounded-xl border border-earth bg-cream-light px-3 py-2 text-base sm:text-sm text-walnut transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-barn/30 focus-visible:border-barn/50"
+                  style={{ maxWidth: "100%", WebkitAppearance: "none" }}
+                />
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-walnut mb-1.5">
