@@ -1,14 +1,18 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
-import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
+import type { Session } from "next-auth";
+import type { Database } from "@/lib/db";
 
-export const createTRPCContext = async () => {
-  const session = await auth();
-  return { db, session };
-};
-
-export type TRPCContext = Awaited<ReturnType<typeof createTRPCContext>>;
+/**
+ * tRPC context shape. Defined here (with type-only imports) so the tRPC
+ * primitives below do not pull the auth implementation — and therefore
+ * next-auth's runtime — into the router import graph. Only the context
+ * factory (./context) imports auth.
+ */
+export interface TRPCContext {
+  db: Database;
+  session: Session | null;
+}
 
 const t = initTRPC.context<TRPCContext>().create({
   transformer: superjson,
