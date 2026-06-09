@@ -16,7 +16,23 @@ import { generatePoolSymbol } from "@/lib/utils";
 import { TRPCError } from "@trpc/server";
 import { sendNotificationToMany } from "@/server/services/notifications";
 import { memberAccountColumns } from "@/lib/db/projections";
-import type { Database } from "@/lib/db";
+import type { Database, DbConn } from "@/lib/db";
+
+/** True if the account has ever received a starting-balance grant in this pool. */
+async function hasStartingBalanceGrant(db: DbConn, poolId: string, accountId: string) {
+  const existing = await db
+    .select({ id: pointTransactions.id })
+    .from(pointTransactions)
+    .where(
+      and(
+        eq(pointTransactions.poolId, poolId),
+        eq(pointTransactions.accountId, accountId),
+        eq(pointTransactions.txType, "starting_balance")
+      )
+    )
+    .limit(1);
+  return existing.length > 0;
+}
 
 /** Throw FORBIDDEN unless the caller is an active member of the pool. */
 async function assertActiveMember(db: Database, poolId: string, accountId: string) {
@@ -40,65 +56,66 @@ export const poolsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const symbol = generatePoolSymbol(input.name);
 
-      const [pool] = await ctx.db
-        .insert(pools)
-        .values({
-          name: input.name,
-          symbol,
-          description: input.description,
-          locationName: input.locationName,
-          websiteUrl: input.websiteUrl || null,
-          groupChatUrl: input.groupChatUrl || null,
-          customLinks: input.customLinks || null,
-          joinPolicy: input.joinPolicy,
-          startingBalance: input.startingBalance,
-          maxNegativeBalance: input.maxNegativeBalance,
-          eventFrequencyLimit: input.eventFrequencyLimit,
-          createdBy: ctx.userId,
-        })
-        .returning();
+      // Pool, steward membership, voucher, and the starting-balance grant must
+      // all commit together — a pool without its voucher would break event
+      // verification later.
+      return await ctx.db.transaction(async (tx) => {
+        const [pool] = await tx
+          .insert(pools)
+          .values({
+            name: input.name,
+            symbol,
+            description: input.description,
+            locationName: input.locationName,
+            websiteUrl: input.websiteUrl || null,
+            groupChatUrl: input.groupChatUrl || null,
+            customLinks: input.customLinks || null,
+            joinPolicy: input.joinPolicy,
+            startingBalance: input.startingBalance,
+            maxNegativeBalance: input.maxNegativeBalance,
+            eventFrequencyLimit: input.eventFrequencyLimit,
+            createdBy: ctx.userId,
+          })
+          .returning();
 
-      // Create membership for creator as steward
-      await ctx.db.insert(poolMemberships).values({
-        poolId: pool.id,
-        accountId: ctx.userId,
-        role: "steward",
-        startingBalanceGranted: input.startingBalance,
-      });
-
-      // Create the pool's labor hour voucher
-      const [voucher] = await ctx.db
-        .insert(vouchers)
-        .values({
+        await tx.insert(poolMemberships).values({
           poolId: pool.id,
-          name: `${input.name} Labor Hours`,
-          symbol: `${symbol}H`,
-        })
-        .returning();
-
-      // Grant starting balance if > 0
-      if (input.startingBalance > 0) {
-        await ctx.db.insert(pointTransactions).values({
-          poolId: pool.id,
-          voucherId: voucher.id,
           accountId: ctx.userId,
-          txType: "starting_balance",
-          value: input.startingBalance * 1_000_000,
-          hours: String(input.startingBalance),
+          role: "steward",
+          startingBalanceGranted: input.startingBalance,
         });
-      }
 
-      // Audit log
-      await ctx.db.insert(auditLog).values({
-        poolId: pool.id,
-        actorId: ctx.userId,
-        action: "pool_created",
-        targetType: "pool",
-        targetId: pool.id,
-        details: { name: input.name },
+        const [voucher] = await tx
+          .insert(vouchers)
+          .values({
+            poolId: pool.id,
+            name: `${input.name} Labor Hours`,
+            symbol: `${symbol}H`,
+          })
+          .returning();
+
+        if (input.startingBalance > 0) {
+          await tx.insert(pointTransactions).values({
+            poolId: pool.id,
+            voucherId: voucher.id,
+            accountId: ctx.userId,
+            txType: "starting_balance",
+            value: input.startingBalance * 10 ** voucher.decimals,
+            hours: String(input.startingBalance),
+          });
+        }
+
+        await tx.insert(auditLog).values({
+          poolId: pool.id,
+          actorId: ctx.userId,
+          action: "pool_created",
+          targetType: "pool",
+          targetId: pool.id,
+          details: { name: input.name },
+        });
+
+        return pool;
       });
-
-      return pool;
     }),
 
   getById: protectedProcedure
@@ -241,51 +258,52 @@ export const poolsRouter = router({
 
       const status = pool.joinPolicy === "approval" ? "pending" : "active";
 
-      const [membership] = await ctx.db
-        .insert(poolMemberships)
-        .values({
-          poolId: input.poolId,
-          accountId: ctx.userId,
-          role: "member",
-          startingBalanceGranted: pool.startingBalance,
-          status,
-        })
-        .onConflictDoUpdate({
-          target: [poolMemberships.poolId, poolMemberships.accountId],
-          set: {
-            leftAt: null,
-            status,
-            joinedAt: new Date(),
-          },
-        })
-        .returning();
+      return await ctx.db.transaction(async (tx) => {
+        // A member who left and rejoins must NOT be granted the starting
+        // balance again (else leave+rejoin farms free hours).
+        const alreadyGranted = await hasStartingBalanceGrant(tx, input.poolId, ctx.userId);
 
-      // Grant starting balance if active and > 0
-      if (status === "active" && pool.startingBalance > 0) {
-        const voucher = await ctx.db.query.vouchers.findFirst({
-          where: eq(vouchers.poolId, input.poolId),
-        });
-        if (voucher) {
-          await ctx.db.insert(pointTransactions).values({
+        const [membership] = await tx
+          .insert(poolMemberships)
+          .values({
             poolId: input.poolId,
-            voucherId: voucher.id,
             accountId: ctx.userId,
-            txType: "starting_balance",
-            value: pool.startingBalance * 1_000_000,
-            hours: String(pool.startingBalance),
+            role: "member",
+            startingBalanceGranted: alreadyGranted ? 0 : pool.startingBalance,
+            status,
+          })
+          .onConflictDoUpdate({
+            target: [poolMemberships.poolId, poolMemberships.accountId],
+            set: { leftAt: null, status, joinedAt: new Date() },
+          })
+          .returning();
+
+        if (!alreadyGranted && status === "active" && pool.startingBalance > 0) {
+          const voucher = await tx.query.vouchers.findFirst({
+            where: eq(vouchers.poolId, input.poolId),
           });
+          if (voucher) {
+            await tx.insert(pointTransactions).values({
+              poolId: input.poolId,
+              voucherId: voucher.id,
+              accountId: ctx.userId,
+              txType: "starting_balance",
+              value: pool.startingBalance * 10 ** voucher.decimals,
+              hours: String(pool.startingBalance),
+            });
+          }
         }
-      }
 
-      await ctx.db.insert(auditLog).values({
-        poolId: input.poolId,
-        actorId: ctx.userId,
-        action: "member_joined",
-        targetType: "membership",
-        targetId: membership.id,
+        await tx.insert(auditLog).values({
+          poolId: input.poolId,
+          actorId: ctx.userId,
+          action: "member_joined",
+          targetType: "membership",
+          targetId: membership.id,
+        });
+
+        return membership;
       });
-
-      return membership;
     }),
 
   updateSettings: protectedProcedure
@@ -450,46 +468,57 @@ export const poolsRouter = router({
       });
       if (!steward) throw new TRPCError({ code: "FORBIDDEN" });
 
-      await ctx.db
-        .update(poolMemberships)
-        .set({ status: "active", joinedAt: new Date() })
-        .where(
-          and(
-            eq(poolMemberships.poolId, input.poolId),
-            eq(poolMemberships.accountId, input.accountId),
-            eq(poolMemberships.status, "pending")
-          )
-        );
-
-      // Grant starting balance
       const pool = await ctx.db.query.pools.findFirst({ where: eq(pools.id, input.poolId) });
-      if (pool && pool.startingBalance > 0) {
-        const voucher = await ctx.db.query.vouchers.findFirst({ where: eq(vouchers.poolId, input.poolId) });
-        if (voucher) {
-          await ctx.db.insert(pointTransactions).values({
-            poolId: input.poolId,
-            voucherId: voucher.id,
-            accountId: input.accountId,
-            txType: "starting_balance",
-            value: pool.startingBalance * 1_000_000,
-            hours: String(pool.startingBalance),
-          });
+      if (!pool) throw new TRPCError({ code: "NOT_FOUND" });
+
+      await ctx.db.transaction(async (tx) => {
+        const updated = await tx
+          .update(poolMemberships)
+          .set({ status: "active", joinedAt: new Date() })
+          .where(
+            and(
+              eq(poolMemberships.poolId, input.poolId),
+              eq(poolMemberships.accountId, input.accountId),
+              eq(poolMemberships.status, "pending")
+            )
+          )
+          .returning();
+        if (updated.length === 0) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "No pending request" });
         }
-      }
+
+        // Grant starting balance only if never granted before in this pool
+        const alreadyGranted = await hasStartingBalanceGrant(tx, input.poolId, input.accountId);
+        if (!alreadyGranted && pool.startingBalance > 0) {
+          const voucher = await tx.query.vouchers.findFirst({
+            where: eq(vouchers.poolId, input.poolId),
+          });
+          if (voucher) {
+            await tx.insert(pointTransactions).values({
+              poolId: input.poolId,
+              voucherId: voucher.id,
+              accountId: input.accountId,
+              txType: "starting_balance",
+              value: pool.startingBalance * 10 ** voucher.decimals,
+              hours: String(pool.startingBalance),
+            });
+          }
+        }
+
+        await tx.insert(auditLog).values({
+          poolId: input.poolId,
+          actorId: ctx.userId,
+          action: "member_approved",
+          targetType: "membership",
+          targetId: input.accountId,
+        });
+      });
 
       await sendNotificationToMany([input.accountId], {
         type: "member_joined",
-        title: `You've been approved to join ${pool?.name}!`,
-        body: pool?.startingBalance ? `You received ${pool.startingBalance} starting hours.` : undefined,
+        title: `You've been approved to join ${pool.name}!`,
+        body: pool.startingBalance ? `You received ${pool.startingBalance} starting hours.` : undefined,
         data: { poolId: input.poolId },
-      });
-
-      await ctx.db.insert(auditLog).values({
-        poolId: input.poolId,
-        actorId: ctx.userId,
-        action: "member_approved",
-        targetType: "membership",
-        targetId: input.accountId,
       });
 
       return { success: true };
@@ -508,9 +537,11 @@ export const poolsRouter = router({
       });
       if (!steward) throw new TRPCError({ code: "FORBIDDEN" });
 
+      // Terminal 'rejected' state — do NOT mark active (that previously left
+      // rejected users as active+left, polluting status='active' queries).
       await ctx.db
         .update(poolMemberships)
-        .set({ leftAt: new Date(), status: "active" })
+        .set({ leftAt: new Date(), status: "rejected" })
         .where(
           and(
             eq(poolMemberships.poolId, input.poolId),
@@ -518,6 +549,14 @@ export const poolsRouter = router({
             eq(poolMemberships.status, "pending")
           )
         );
+
+      await ctx.db.insert(auditLog).values({
+        poolId: input.poolId,
+        actorId: ctx.userId,
+        action: "member_rejected",
+        targetType: "membership",
+        targetId: input.accountId,
+      });
 
       return { success: true };
     }),
