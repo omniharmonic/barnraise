@@ -23,6 +23,11 @@ import {
 } from "@/lib/db/schema";
 import { TRPCError } from "@trpc/server";
 import { sendNotification, sendNotificationToMany } from "@/server/services/notifications";
+import {
+  memberAccountColumns,
+  publicPoolView,
+  type PublicAccount,
+} from "@/lib/db/projections";
 
 /** Compute an account's balance in a pool from point_transactions */
 async function getAccountBalance(db: any, poolId: string, accountId: string): Promise<number> {
@@ -371,33 +376,36 @@ export const eventsRouter = router({
           .where(eq(events.id, input.eventId));
       }
 
-      // Get host info
-      const host = await ctx.db.query.accounts.findFirst({
-        where: eq(accounts.id, event.hostId),
-      });
+      // Get host info (safe projection — this is a public endpoint)
+      const [host] = await ctx.db
+        .select(memberAccountColumns)
+        .from(accounts)
+        .where(eq(accounts.id, event.hostId));
 
-      // Get pool info
-      const pool = await ctx.db.query.pools.findFirst({
+      // Get pool info (public-safe projection — no governance/chain internals)
+      const poolRow = await ctx.db.query.pools.findFirst({
         where: eq(pools.id, event.poolId),
       });
+      const pool = poolRow ? publicPoolView(poolRow) : null;
 
       // Get claims with account info
       const claims = await ctx.db
         .select({
           claim: eventClaims,
-          account: accounts,
+          account: memberAccountColumns,
         })
         .from(eventClaims)
         .innerJoin(accounts, eq(accounts.id, eventClaims.accountId))
         .where(eq(eventClaims.eventId, input.eventId));
 
       // Get pledges with account info for group events
-      let pledges: { pledge: typeof eventPledges.$inferSelect; account: typeof accounts.$inferSelect }[] = [];
+      type PledgeAccount = { pledge: typeof eventPledges.$inferSelect; account: PublicAccount };
+      let pledges: PledgeAccount[] = [];
       if (event.hostingType === "group") {
         const pledgeRows = await ctx.db
           .select({
             pledge: eventPledges,
-            account: accounts,
+            account: memberAccountColumns,
           })
           .from(eventPledges)
           .innerJoin(accounts, eq(accounts.id, eventPledges.accountId))
@@ -526,7 +534,7 @@ export const eventsRouter = router({
       const eventsList = await ctx.db
         .select({
           event: events,
-          host: accounts,
+          host: memberAccountColumns,
         })
         .from(events)
         .innerJoin(accounts, eq(accounts.id, events.hostId))
@@ -1415,7 +1423,7 @@ export const eventsRouter = router({
         claim: eventClaims,
         event: events,
         pool: pools,
-        host: accounts,
+        host: memberAccountColumns,
       })
       .from(eventClaims)
       .innerJoin(events, eq(events.id, eventClaims.eventId))

@@ -19,9 +19,24 @@ export const accounts = pgTable("accounts", {
   chainAddress: text("chain_address"),
   custodial: boolean("custodial").default(true),
 
-  // Auth — password_hash NULL if magic link only
-  passwordHash: text("password_hash"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
 
+/**
+ * Credentials live in a table separate from `accounts` so that the password
+ * hash can never be serialized to a client through an accidental `select *`
+ * on a profile/account row.
+ */
+export const accountCredentials = pgTable("account_credentials", {
+  accountId: uuid("account_id")
+    .primaryKey()
+    .references(() => accounts.id, { onDelete: "cascade" }),
+  passwordHash: text("password_hash").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

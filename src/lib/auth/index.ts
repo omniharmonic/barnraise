@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { db } from "@/lib/db";
-import { accounts } from "@/lib/db/schema";
+import { accounts, accountCredentials } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
@@ -36,14 +36,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           const displayName = name || email.split("@")[0];
           const passwordHash = await bcrypt.hash(password, 12);
 
-          const [newAccount] = await db
-            .insert(accounts)
-            .values({
-              email,
-              displayName,
+          const newAccount = await db.transaction(async (tx) => {
+            const [acct] = await tx
+              .insert(accounts)
+              .values({ email, displayName })
+              .returning();
+            await tx.insert(accountCredentials).values({
+              accountId: acct.id,
               passwordHash,
-            })
-            .returning();
+            });
+            return acct;
+          });
 
           return {
             id: newAccount.id,
@@ -57,22 +60,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           throw new Error("No account found with this email. Please sign up first.");
         }
 
-        if (!existing.passwordHash) {
-          // Legacy account without password — allow setting one
-          const passwordHash = await bcrypt.hash(password, 12);
-          await db
-            .update(accounts)
-            .set({ passwordHash })
-            .where(eq(accounts.id, existing.id));
+        const cred = await db.query.accountCredentials.findFirst({
+          where: eq(accountCredentials.accountId, existing.id),
+        });
 
-          return {
-            id: existing.id,
-            email: existing.email,
-            name: existing.displayName,
-          };
+        // No password set (e.g. a future magic-link-only account): do not
+        // silently set one from the submitted value. Require an explicit
+        // password-reset flow instead.
+        if (!cred) {
+          throw new Error(
+            "This account has no password set. Use a password reset to create one."
+          );
         }
 
-        const valid = await bcrypt.compare(password, existing.passwordHash);
+        const valid = await bcrypt.compare(password, cred.passwordHash);
         if (!valid) {
           throw new Error("Incorrect password.");
         }

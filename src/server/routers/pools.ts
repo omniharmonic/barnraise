@@ -15,6 +15,24 @@ import {
 import { generatePoolSymbol } from "@/lib/utils";
 import { TRPCError } from "@trpc/server";
 import { sendNotificationToMany } from "@/server/services/notifications";
+import { memberAccountColumns } from "@/lib/db/projections";
+import type { Database } from "@/lib/db";
+
+/** Throw FORBIDDEN unless the caller is an active member of the pool. */
+async function assertActiveMember(db: Database, poolId: string, accountId: string) {
+  const membership = await db.query.poolMemberships.findFirst({
+    where: and(
+      eq(poolMemberships.poolId, poolId),
+      eq(poolMemberships.accountId, accountId),
+      eq(poolMemberships.status, "active"),
+      isNull(poolMemberships.leftAt)
+    ),
+  });
+  if (!membership) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Must be a pool member" });
+  }
+  return membership;
+}
 
 export const poolsRouter = router({
   create: protectedProcedure
@@ -167,10 +185,11 @@ export const poolsRouter = router({
   members: protectedProcedure
     .input(z.object({ poolId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      await assertActiveMember(ctx.db, input.poolId, ctx.userId);
       const members = await ctx.db
         .select({
           membership: poolMemberships,
-          account: accounts,
+          account: memberAccountColumns,
           earned: sql<number>`coalesce(sum(case when ${pointTransactions.txType} in ('earn', 'starting_balance') then ${pointTransactions.hours}::numeric else 0 end), 0)::numeric`,
           spent: sql<number>`coalesce(sum(case when ${pointTransactions.txType} = 'spend' then ${pointTransactions.hours}::numeric else 0 end), 0)::numeric`,
         })
@@ -399,8 +418,13 @@ export const poolsRouter = router({
       });
       if (!steward) throw new TRPCError({ code: "FORBIDDEN" });
 
+      // Stewards may see the requester's email to recognize who is asking
+      // to join — this endpoint is steward-gated above.
       const pending = await ctx.db
-        .select({ membership: poolMemberships, account: accounts })
+        .select({
+          membership: poolMemberships,
+          account: { ...memberAccountColumns, email: accounts.email },
+        })
         .from(poolMemberships)
         .innerJoin(accounts, eq(accounts.id, poolMemberships.accountId))
         .where(
@@ -560,6 +584,7 @@ export const poolsRouter = router({
   health: protectedProcedure
     .input(z.object({ poolId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      await assertActiveMember(ctx.db, input.poolId, ctx.userId);
       // Active members (attended or hosted in last 30 days)
       const [activeMembers] = await ctx.db
         .select({
@@ -700,10 +725,11 @@ export const poolsRouter = router({
   activity: protectedProcedure
     .input(z.object({ poolId: z.string().uuid(), limit: z.number().default(20) }))
     .query(async ({ ctx, input }) => {
+      await assertActiveMember(ctx.db, input.poolId, ctx.userId);
       const logs = await ctx.db
         .select({
           log: auditLog,
-          actor: accounts,
+          actor: memberAccountColumns,
         })
         .from(auditLog)
         .innerJoin(accounts, eq(accounts.id, auditLog.actorId))
