@@ -278,3 +278,82 @@ The schema is a faithful CPP mirror (bridge fields `chainAddress`/`chainTxHash`,
 ## 9. One-paragraph summary
 
 Barn Raise has an excellent foundation: a correct, event-sourced, CPP-aligned ledger (proven by live tests) and a thoughtful, warm UI that already exceeds the PRD in several flows. To be production-ready it needs, in order: to stop leaking emails/password-hashes from the public event endpoint, to make its multi-write paths transactional and race-safe, to add rate limiting and route protection, to close the `flexibleHours`/frequency-limit/email-notification PRD gaps, and to put a real test suite behind a CI gate. None of these are deep redesigns — the architecture is sound; the work is hardening it.
+
+---
+
+## 10. Implementation Status (execution log)
+
+This section records what was actually implemented against the plan above, with
+verification. All changes are covered by a vitest integration suite (25 tests)
+driving the real tRPC routers against Postgres; the production build, `tsc
+--noEmit`, and `eslint` are all green (lint: 0 errors; 4 remaining warnings are
+`<img>` on user-uploaded content).
+
+### Done — P0 (security & integrity)
+- **PII/credential leak (2.1):** added `src/lib/db/projections.ts` and applied
+  safe account/pool projections across every client-facing query; moved the
+  password hash into a separate `account_credentials` table so it cannot leak
+  even via `select *`. Removed the insecure auto-set-password path.
+  Regression test asserts no `passwordHash`/`email` ever serializes from the
+  public `events.getById` and that non-members are rejected.
+- **Transactional integrity (2.2):** wrapped `events.verify/create/claim/
+  cancelEvent/pledge` and `pools.create/join/approveJoin` in
+  `db.transaction()`; verify re-checks status under lock (idempotent).
+- **Over-sell / capacity races (2.3):** `SELECT … FOR UPDATE` row locks on the
+  event row (claim/pledge) and the membership row (create). A concurrency test
+  fires 8 parallel claims and asserts exactly 3 succeed.
+- **Rate limiting (2.4):** Postgres-backed fixed-window limiter
+  (`rate_limits` + `consumeRateLimit`); per-user mutation, per-IP public, and
+  per-email sign-in throttles; upload throttle.
+- **Route protection (2.5):** server-side auth guard on the `(dashboard)`
+  layout (verified `/dashboard` is now dynamic + redirects).
+- **Member-only pool reads (2.6):** `members/health/activity` and
+  `users.poolProfile` now require active membership.
+- **rejectJoin terminal state (2.7); env-secret + zoom + auto-password (2.8).**
+- **Bonus:** fixed a leave+rejoin double starting-balance grant (grant is now
+  keyed on whether a `starting_balance` tx already exists); test included.
+
+### Done — P1 (correctness & CI)
+- Enforced `flexibleHours` (full-shift) and remaining-hours on claim; enforced
+  `eventFrequencyLimit`; reject `end <= start`. Tests included.
+- Fixed all lint errors; typed away `db: any`; replaced prop→state effects with
+  the adjust-state-during-render pattern; removed dead code.
+- Extracted the duplicated balance SQL into `src/lib/db/ledger.ts`.
+- Stood up GitHub Actions CI (Postgres service → schema push → typecheck +
+  lint + tests) and a `scripts/dev-setup.sh` + SessionStart hook for web
+  sessions.
+- Decoupled the tRPC context from the auth runtime (`src/lib/trpc/context.ts`)
+  so routers are unit-testable.
+
+### Done — P2/P3 (selected)
+- **Email notifications (PRD 4.2):** Resend helper (`src/lib/email.ts`),
+  instant emails on notification, an `email_digest` preference + profile UI,
+  and an hourly secret-protected cron (`/api/cron/reminders`) that emits the
+  previously-missing 24h reminders and verify requests (deduped). Tests cover
+  preference persistence and cron send+dedupe.
+- **Accessibility/UX:** accessible `ConfirmDialog` replacing `window.confirm()`
+  for destructive actions; safe `copyToClipboard`; shared color utilities;
+  re-enabled pinch-zoom.
+- **Upload hardening:** magic-byte content sniffing, server-derived extension.
+- **schema.org Event JSON-LD** on the public event page (script-escaped).
+- Derived ledger smallest-unit value from `voucher.decimals` (§7).
+
+### Not yet done (larger net-new product work — recommended next)
+These are feature builds rather than hardening, intentionally deferred:
+- Draft events + a pre-publish preview screen.
+- Disputes (PRD 2.4) — schema, endpoint, and visibility UI.
+- Onboarding flow; member leaderboard view; a dedicated transparency-log page
+  (the activity feed already surfaces audit entries); invite *codes* in
+  addition to the existing invite link.
+- Daily/weekly email digest batching (the preference and the `instant` path
+  exist; the digest aggregator/cron is stubbed via the preference but not yet
+  implemented).
+- Browser E2E (Playwright) could not run here (sandbox blocks the Chromium
+  download); the CI workflow is the place to run it.
+
+### Environment note (build resilience)
+`next/font/google` fetches fonts at **build time**; in a network-restricted
+build (this sandbox, airgapped CI) that fails the build. Recommend
+self-hosting the three fonts via `next/font/local` with the woff2 files
+committed, to make builds hermetic. (Not changed here to avoid committing
+binaries blindly; flagged for follow-up.)
