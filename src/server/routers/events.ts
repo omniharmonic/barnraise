@@ -29,6 +29,7 @@ import {
   type PublicAccount,
 } from "@/lib/db/projections";
 import type { DbConn } from "@/lib/db";
+import { assertRateLimit } from "@/lib/rate-limit";
 
 /** Compute an account's balance in a pool from point_transactions */
 async function getAccountBalance(db: DbConn, poolId: string, accountId: string): Promise<number> {
@@ -324,6 +325,10 @@ export const eventsRouter = router({
   getById: publicProcedure
     .input(z.object({ eventId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // Throttle anonymous reads per IP to deter enumeration/scraping.
+      if (ctx.ip) {
+        await assertRateLimit(ctx.db, `event-view:${ctx.ip}`, 120, 60);
+      }
       const event = await ctx.db.query.events.findFirst({
         where: eq(events.id, input.eventId),
       });

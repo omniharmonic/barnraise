@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { accounts, accountCredentials } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { assertRateLimit } from "@/lib/rate-limit";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -22,6 +23,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const isSignUp = credentials?.isSignUp === "true";
 
         if (!email || !password) return null;
+
+        // Throttle credential attempts per email to slow brute force.
+        await assertRateLimit(db, `auth:${email.toLowerCase()}`, 10, 300);
 
         const existing = await db.query.accounts.findFirst({
           where: eq(accounts.email, email),

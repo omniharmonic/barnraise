@@ -8,3 +8,5 @@ export * from "./event-pledges";
 export * from "./point-transactions";
 export * from "./audit-log";
 export * from "./notifications";
+
+export * from "./rate-limits";
