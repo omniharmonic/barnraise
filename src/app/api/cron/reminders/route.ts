@@ -22,18 +22,20 @@ export async function GET(request: NextRequest) {
   }
 
   const now = new Date();
-  const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-  const in23h = new Date(now.getTime() + 23 * 60 * 60 * 1000);
+  // Vercel Hobby crons run at most once per day, so reminders fire on the
+  // daily run that falls within ~25h before an event starts (rather than a
+  // narrow 23–24h band). reminder_sent_at dedupes so no one is reminded twice.
+  const in25h = new Date(now.getTime() + 25 * 60 * 60 * 1000);
 
-  // --- Event reminders: events starting in the next 23–24h window ---
+  // --- Event reminders: events starting within the next 25h ---
   const upcoming = await db
     .select()
     .from(events)
     .where(
       and(
         inArray(events.status, ["open", "confirmed"]),
-        gte(events.dateStart, in23h),
-        lte(events.dateStart, in24h),
+        gte(events.dateStart, now),
+        lte(events.dateStart, in25h),
         isNull(events.reminderSentAt)
       )
     );
