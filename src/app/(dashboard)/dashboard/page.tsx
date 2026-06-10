@@ -10,6 +10,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Plus, Users, Clock, CalendarDays, CheckCircle2, ArrowRight } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { balanceColor } from "@/lib/ui/colors";
 
 export default function DashboardPage() {
   const { data: session } = useSession();
@@ -90,7 +91,7 @@ export default function DashboardPage() {
                       <Clock className="h-3.5 w-3.5" />
                       <span
                         className={`font-mono text-xs ${
-                          pool.balance >= 0 ? "text-sage" : "text-barn"
+                          balanceColor(pool.balance)
                         }`}
                       >
                         {pool.balance >= 0 ? "+" : ""}

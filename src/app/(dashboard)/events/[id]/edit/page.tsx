@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Trash2, AlertTriangle, ArrowLeft, Plus, X, Layers } from "lucide-react";
 import Link from "next/link";
 
@@ -472,20 +473,24 @@ export default function EditEventPage({
                 All claimed slots and co-host pledges will be released. This cannot be undone.
               </p>
             </div>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="w-full sm:w-auto"
-              onClick={() => {
-                if (confirm("Cancel this event? All claimed slots and pledges will be released.")) {
-                  cancelEventMutation.mutate({ eventId });
-                }
-              }}
-              disabled={cancelEventMutation.isPending}
+            <ConfirmDialog
+              title="Cancel this event?"
+              description="All claimed slots and co-host pledges will be released. This cannot be undone."
+              confirmLabel="Cancel Event"
+              cancelLabel="Keep Event"
+              destructive
+              onConfirm={() => cancelEventMutation.mutate({ eventId })}
             >
-              <Trash2 className="h-3.5 w-3.5" />
-              {cancelEventMutation.isPending ? "Cancelling..." : "Cancel Event"}
-            </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="w-full sm:w-auto"
+                disabled={cancelEventMutation.isPending}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {cancelEventMutation.isPending ? "Cancelling..." : "Cancel Event"}
+              </Button>
+            </ConfirmDialog>
           </div>
         </CardContent>
       </Card>

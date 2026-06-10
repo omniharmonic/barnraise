@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { balanceColor } from "@/lib/ui/colors";
 import {
   User,
   Save,
@@ -156,7 +157,7 @@ export default function ProfilePage() {
               <div className="text-walnut-muted text-xs uppercase tracking-wider mb-1.5">
                 Total Balance
               </div>
-              <div className={`text-2xl font-mono font-medium ${totals.balance >= 0 ? "text-sage" : "text-barn"}`}>
+              <div className={`text-2xl font-mono font-medium ${balanceColor(totals.balance)}`}>
                 {totals.balance >= 0 ? "+" : ""}{totals.balance}h
               </div>
               <div className="text-xs text-walnut-muted mt-1 font-mono">
@@ -239,7 +240,7 @@ export default function ProfilePage() {
                   <div className="flex items-center gap-3">
                     <div
                       className={`text-sm font-mono font-medium ${
-                        p.balance >= 0 ? "text-sage" : "text-barn"
+                        balanceColor(p.balance)
                       }`}
                     >
                       {p.balance >= 0 ? "+" : ""}

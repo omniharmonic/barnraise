@@ -2,6 +2,7 @@
 
 import { use, useState } from "react";
 import Link from "next/link";
+import { copyToClipboard } from "@/lib/ui/clipboard";
 import { useSession } from "next-auth/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/lib/trpc/react";
@@ -198,11 +199,12 @@ export default function EventDetailPage({
               variant="outline"
               size="sm"
               className="bg-white/60 border-white/50 backdrop-blur-sm shrink-0"
-              onClick={() => {
+              onClick={async () => {
                 const url = `${window.location.origin}/events/${eventId}`;
-                navigator.clipboard.writeText(url);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
+                if (await copyToClipboard(url)) {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }
               }}
             >
               {copied ? (

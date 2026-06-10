@@ -13,6 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Shield, UserMinus, Check, X, Clock, Globe, MessageCircle, Plus, ArrowLeft } from "lucide-react";
 import { AvatarCircle } from "@/components/ui/avatar-circle";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { copyToClipboard } from "@/lib/ui/clipboard";
+import { balanceColor } from "@/lib/ui/colors";
 
 export default function PoolSettingsPage({
   params,
@@ -145,10 +148,11 @@ export default function PoolSettingsPage({
             <Input value={inviteUrl} readOnly className="bg-cream-light" />
             <Button
               variant="outline"
-              onClick={() => {
-                navigator.clipboard.writeText(inviteUrl);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
+              onClick={async () => {
+                if (await copyToClipboard(inviteUrl)) {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }
               }}
             >
               {copied ? "Copied!" : "Copy"}
@@ -417,7 +421,7 @@ export default function PoolSettingsPage({
                           "Member"
                         )}
                         {" · "}
-                        <span className={`font-mono ${member.balance >= 0 ? "text-sage" : "text-barn"}`}>
+                        <span className={`font-mono ${balanceColor(member.balance)}`}>
                           {member.balance >= 0 ? "+" : ""}{member.balance}h
                         </span>
                       </div>
@@ -449,18 +453,24 @@ export default function PoolSettingsPage({
                           Demote
                         </Button>
                       )}
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => {
-                          if (confirm(`Remove ${member.account.displayName} from this pool?`)) {
-                            removeMember.mutate({ poolId, accountId: member.accountId });
-                          }
-                        }}
-                        disabled={removeMember.isPending}
+                      <ConfirmDialog
+                        title={`Remove ${member.account.displayName}?`}
+                        description="They will lose access to this pool. Their historical record stays visible to the pool."
+                        confirmLabel="Remove Member"
+                        destructive
+                        onConfirm={() =>
+                          removeMember.mutate({ poolId, accountId: member.accountId })
+                        }
                       >
-                        <UserMinus className="h-3 w-3" />
-                      </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={removeMember.isPending}
+                          aria-label={`Remove ${member.account.displayName}`}
+                        >
+                          <UserMinus className="h-3 w-3" />
+                        </Button>
+                      </ConfirmDialog>
                     </div>
                   )}
                 </div>
