@@ -17,6 +17,7 @@ import { TRPCError } from "@trpc/server";
 import { sendNotificationToMany } from "@/server/services/notifications";
 import { memberAccountColumns } from "@/lib/db/projections";
 import type { Database, DbConn } from "@/lib/db";
+import { earnedHoursExpr, spentHoursExpr } from "@/lib/db/ledger";
 
 /** True if the account has ever received a starting-balance grant in this pool. */
 async function hasStartingBalanceGrant(db: DbConn, poolId: string, accountId: string) {
@@ -172,8 +173,8 @@ export const poolsRouter = router({
       if (membership) {
         const [bal] = await ctx.db
           .select({
-            earned: sql<number>`coalesce(sum(case when tx_type in ('earn', 'starting_balance') then hours::numeric else 0 end), 0)::numeric`,
-            spent: sql<number>`coalesce(sum(case when tx_type = 'spend' then hours::numeric else 0 end), 0)::numeric`,
+            earned: earnedHoursExpr,
+            spent: spentHoursExpr,
           })
           .from(pointTransactions)
           .where(
@@ -207,8 +208,8 @@ export const poolsRouter = router({
         .select({
           membership: poolMemberships,
           account: memberAccountColumns,
-          earned: sql<number>`coalesce(sum(case when ${pointTransactions.txType} in ('earn', 'starting_balance') then ${pointTransactions.hours}::numeric else 0 end), 0)::numeric`,
-          spent: sql<number>`coalesce(sum(case when ${pointTransactions.txType} = 'spend' then ${pointTransactions.hours}::numeric else 0 end), 0)::numeric`,
+          earned: earnedHoursExpr,
+          spent: spentHoursExpr,
         })
         .from(poolMemberships)
         .innerJoin(accounts, eq(accounts.id, poolMemberships.accountId))
@@ -705,8 +706,8 @@ export const poolsRouter = router({
       const memberBalances = await ctx.db
         .select({
           accountId: poolMemberships.accountId,
-          earned: sql<number>`coalesce(sum(case when ${pointTransactions.txType} in ('earn', 'starting_balance') then ${pointTransactions.hours}::numeric else 0 end), 0)::numeric`,
-          spent: sql<number>`coalesce(sum(case when ${pointTransactions.txType} = 'spend' then ${pointTransactions.hours}::numeric else 0 end), 0)::numeric`,
+          earned: earnedHoursExpr,
+          spent: spentHoursExpr,
         })
         .from(poolMemberships)
         .leftJoin(

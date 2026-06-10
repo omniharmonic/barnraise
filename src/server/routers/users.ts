@@ -3,6 +3,7 @@ import { eq, and, isNull, sql, desc } from "drizzle-orm";
 import { router, protectedProcedure } from "@/lib/trpc/init";
 import { accounts, pointTransactions, eventClaims, events, poolMemberships } from "@/lib/db/schema";
 import { selfAccountColumns, memberAccountColumns } from "@/lib/db/projections";
+import { earnedHoursExpr, spentHoursExpr } from "@/lib/db/ledger";
 import { TRPCError } from "@trpc/server";
 
 export const usersRouter = router({
@@ -41,8 +42,8 @@ export const usersRouter = router({
         poolName: sql<string>`(select name from pools where id = ${poolMemberships.poolId})`,
         role: poolMemberships.role,
         joinedAt: poolMemberships.joinedAt,
-        earned: sql<number>`coalesce(sum(case when ${pointTransactions.txType} in ('earn', 'starting_balance') then ${pointTransactions.hours}::numeric else 0 end), 0)::numeric`,
-        spent: sql<number>`coalesce(sum(case when ${pointTransactions.txType} = 'spend' then ${pointTransactions.hours}::numeric else 0 end), 0)::numeric`,
+        earned: earnedHoursExpr,
+        spent: spentHoursExpr,
       })
       .from(poolMemberships)
       .leftJoin(
@@ -143,8 +144,8 @@ export const usersRouter = router({
       // Balance
       const [bal] = await ctx.db
         .select({
-          earned: sql<number>`coalesce(sum(case when tx_type in ('earn', 'starting_balance') then hours::numeric else 0 end), 0)::numeric`,
-          spent: sql<number>`coalesce(sum(case when tx_type = 'spend' then hours::numeric else 0 end), 0)::numeric`,
+          earned: earnedHoursExpr,
+          spent: spentHoursExpr,
         })
         .from(pointTransactions)
         .where(

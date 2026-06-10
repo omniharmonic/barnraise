@@ -30,16 +30,12 @@ import {
 } from "@/lib/db/projections";
 import type { DbConn } from "@/lib/db";
 import { assertRateLimit } from "@/lib/rate-limit";
+import { balanceHoursExpr } from "@/lib/db/ledger";
 
 /** Compute an account's balance in a pool from point_transactions */
 async function getAccountBalance(db: DbConn, poolId: string, accountId: string): Promise<number> {
   const [result] = await db
-    .select({
-      balance: sql<number>`coalesce(
-        sum(case when tx_type in ('earn', 'starting_balance') then hours::numeric else 0 end) -
-        sum(case when tx_type = 'spend' then hours::numeric else 0 end)
-      , 0)::numeric`,
-    })
+    .select({ balance: balanceHoursExpr })
     .from(pointTransactions)
     .where(
       and(
