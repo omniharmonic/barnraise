@@ -65,7 +65,6 @@ export default function CreateEventPage({
   const createEvent = useMutation(trpc.events.create.mutationOptions());
 
   const capacity = capacityData?.capacity ?? 0;
-  const grossCapacity = capacityData?.grossCapacity ?? 0;
   const pendingCommitments = capacityData?.pendingCommitments ?? 0;
   const balance = capacityData?.balance ?? 0;
   const maxNeg = capacityData?.maxNegativeBalance ?? 0;
@@ -518,10 +517,6 @@ export default function CreateEventPage({
             {form.workAreas.length > 0 && (
               <div className="space-y-2">
                 {form.workAreas.map((wa, i) => {
-                  const allocatedHours = form.workAreas.reduce(
-                    (sum, w) => sum + (w.targetHours || 0),
-                    0
-                  );
                   return (
                     <div
                       key={i}

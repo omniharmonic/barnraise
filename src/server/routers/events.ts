@@ -23,16 +23,19 @@ import {
 } from "@/lib/db/schema";
 import { TRPCError } from "@trpc/server";
 import { sendNotification, sendNotificationToMany } from "@/server/services/notifications";
+import {
+  memberAccountColumns,
+  publicPoolView,
+  type PublicAccount,
+} from "@/lib/db/projections";
+import type { DbConn } from "@/lib/db";
+import { assertRateLimit } from "@/lib/rate-limit";
+import { balanceHoursExpr } from "@/lib/db/ledger";
 
 /** Compute an account's balance in a pool from point_transactions */
-async function getAccountBalance(db: any, poolId: string, accountId: string): Promise<number> {
+async function getAccountBalance(db: DbConn, poolId: string, accountId: string): Promise<number> {
   const [result] = await db
-    .select({
-      balance: sql<number>`coalesce(
-        sum(case when tx_type in ('earn', 'starting_balance') then hours::numeric else 0 end) -
-        sum(case when tx_type = 'spend' then hours::numeric else 0 end)
-      , 0)::numeric`,
-    })
+    .select({ balance: balanceHoursExpr })
     .from(pointTransactions)
     .where(
       and(
@@ -53,7 +56,7 @@ async function getAccountBalance(db: any, poolId: string, accountId: string): Pr
  * so they must reduce available capacity to prevent overselling.
  */
 async function getPendingCommitments(
-  db: any,
+  db: DbConn,
   poolId: string,
   accountId: string,
   excludeEventId?: string
@@ -110,7 +113,7 @@ function splitProportional(total: number, pledges: { accountId: string; hours: n
     return { accountId: p.accountId, floored, remainder: exact - floored };
   });
 
-  let distributed = shares.reduce((s, sh) => s + sh.floored, 0);
+  const distributed = shares.reduce((s, sh) => s + sh.floored, 0);
   let remaining = total - distributed;
 
   // Sort by largest remainder descending
@@ -132,206 +135,179 @@ export const eventsRouter = router({
   create: protectedProcedure
     .input(createEventSchema)
     .mutation(async ({ ctx, input }) => {
-      // Verify pool membership
-      const membership = await ctx.db.query.poolMemberships.findFirst({
-        where: and(
-          eq(poolMemberships.poolId, input.poolId),
-          eq(poolMemberships.accountId, ctx.userId),
-          isNull(poolMemberships.leftAt)
-        ),
-      });
-      if (!membership) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Must be a pool member to create events",
-        });
-      }
-
-      const pool = await ctx.db.query.pools.findFirst({
-        where: eq(pools.id, input.poolId),
-      });
-      if (!pool) throw new TRPCError({ code: "NOT_FOUND", message: "Pool not found" });
-
-      const hostBalance = await getAccountBalance(ctx.db, input.poolId, ctx.userId);
-      const pending = await getPendingCommitments(ctx.db, input.poolId, ctx.userId);
-      const grossCapacity = hostBalance + Math.abs(pool.maxNegativeBalance);
-      const capacity = Math.max(0, grossCapacity - pending);
-
-      if (input.hostingType === "solo") {
-        // Solo: balance check at creation (accounting for pending commitments)
-        if (input.totalHoursNeeded > capacity) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Your available capacity is ${capacity}h (balance ${hostBalance}h + limit ${Math.abs(pool.maxNegativeBalance)}h${pending > 0 ? ` − ${pending}h already committed` : ""}). Try group hosting to split the cost.`,
-          });
-        }
-
-        const [event] = await ctx.db
-          .insert(events)
-          .values({
-            poolId: input.poolId,
-            hostId: ctx.userId,
-            title: input.title,
-            description: input.description,
-            dateStart: new Date(input.dateStart),
-            dateEnd: new Date(input.dateEnd),
-            locationName: input.locationName,
-            totalHoursNeeded: input.totalHoursNeeded,
-            maxParticipants: input.maxParticipants,
-            minParticipants: input.minParticipants,
-            flexibleHours: input.flexibleHours,
-            skillTags: input.skillTags,
-            potluckUrl: input.potluckUrl,
-            bannerImageUrl: input.bannerImageUrl,
-            hostingType: "solo",
-            status: "open",
-          })
-          .returning();
-
-        // Insert work areas if provided
-        if (input.workAreas && input.workAreas.length > 0) {
-          await ctx.db.insert(eventWorkAreas).values(
-            input.workAreas.map((wa, i) => ({
-              eventId: event.id,
-              name: wa.name,
-              targetHours: wa.targetHours ?? null,
-              sortOrder: i,
-            }))
-          );
-        }
-
-        // Merge new skill tags into pool's accumulated tags
-        if (input.skillTags && input.skillTags.length > 0) {
-          const existingTags = pool.skillTags || [];
-          const merged = [...new Set([...existingTags, ...input.skillTags])];
-          if (merged.length > existingTags.length) {
-            await ctx.db.update(pools).set({ skillTags: merged }).where(eq(pools.id, input.poolId));
-          }
-        }
-
-        await ctx.db.insert(auditLog).values({
-          poolId: input.poolId,
-          actorId: ctx.userId,
-          action: "event_created",
-          targetType: "event",
-          targetId: event.id,
-          details: { title: input.title, hostingType: "solo" },
-        });
-
-        // Notify pool members
-        const poolMembers = await ctx.db.query.poolMemberships.findMany({
-          where: and(
-            eq(poolMemberships.poolId, input.poolId),
-            isNull(poolMemberships.leftAt)
-          ),
-        });
-        const otherMemberIds = poolMembers
-          .filter((m) => m.accountId !== ctx.userId)
-          .map((m) => m.accountId);
-
-        const creator = await ctx.db.query.accounts.findFirst({
-          where: eq(accounts.id, ctx.userId),
-        });
-
-        await sendNotificationToMany(otherMemberIds, {
-          type: "new_event",
-          title: `New event: ${input.title}`,
-          body: `${creator?.displayName} is hosting "${input.title}". Check it out and claim a slot!`,
-          data: { eventId: event.id, poolId: input.poolId },
-        });
-
-        return event;
-      }
-
-      // Group: create in "pledging" status with host's initial pledge
-      const hostPledgeHours = input.hostPledgeHours ?? 1;
-      if (hostPledgeHours > capacity) {
+      // Cross-field date validation (defence in depth alongside the schema).
+      const dateStart = new Date(input.dateStart);
+      const dateEnd = new Date(input.dateEnd);
+      if (dateEnd <= dateStart) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: `You can pledge up to ${capacity}h (balance ${hostBalance}h + limit ${Math.abs(pool.maxNegativeBalance)}h${pending > 0 ? ` − ${pending}h committed` : ""}).`,
+          message: "Event end time must be after the start time",
         });
       }
 
-      const [event] = await ctx.db
-        .insert(events)
-        .values({
-          poolId: input.poolId,
-          hostId: ctx.userId,
-          title: input.title,
-          description: input.description,
-          dateStart: new Date(input.dateStart),
-          dateEnd: new Date(input.dateEnd),
-          locationName: input.locationName,
-          totalHoursNeeded: input.totalHoursNeeded,
-          maxParticipants: input.maxParticipants,
-          minParticipants: input.minParticipants,
-          flexibleHours: input.flexibleHours,
-          skillTags: input.skillTags,
-          potluckUrl: input.potluckUrl,
-          bannerImageUrl: input.bannerImageUrl,
-          hostingType: "group",
-          status: hostPledgeHours >= input.totalHoursNeeded ? "open" : "pledging",
-          hoursPledged: hostPledgeHours,
-          coHostCount: 1,
-        })
-        .returning();
+      const isGroup = input.hostingType === "group";
+      const hostPledgeHours = input.hostPledgeHours ?? 1;
 
-      // Create host's pledge
-      await ctx.db.insert(eventPledges).values({
-        eventId: event.id,
-        accountId: ctx.userId,
-        hoursPledged: hostPledgeHours,
-      });
+      const { event, otherMemberIds, creatorName } = await ctx.db.transaction(
+        async (tx) => {
+          // Lock the host's membership row: this serializes concurrent event
+          // creation by the same member so parallel creates can't each pass
+          // the capacity check and jointly exceed maxNegativeBalance.
+          const [membership] = await tx
+            .select()
+            .from(poolMemberships)
+            .where(
+              and(
+                eq(poolMemberships.poolId, input.poolId),
+                eq(poolMemberships.accountId, ctx.userId),
+                isNull(poolMemberships.leftAt)
+              )
+            )
+            .for("update");
+          if (!membership || membership.status !== "active") {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Must be a pool member to create events",
+            });
+          }
 
-      // Insert work areas if provided
-      if (input.workAreas && input.workAreas.length > 0) {
-        await ctx.db.insert(eventWorkAreas).values(
-          input.workAreas.map((wa, i) => ({
-            eventId: event.id,
-            name: wa.name,
-            targetHours: wa.targetHours ?? null,
-            sortOrder: i,
-          }))
-        );
-      }
+          const pool = await tx.query.pools.findFirst({
+            where: eq(pools.id, input.poolId),
+          });
+          if (!pool) throw new TRPCError({ code: "NOT_FOUND", message: "Pool not found" });
 
-      // Merge new skill tags into pool's accumulated tags
-      if (input.skillTags && input.skillTags.length > 0) {
-        const existingTags = pool.skillTags || [];
-        const merged = [...new Set([...existingTags, ...input.skillTags])];
-        if (merged.length > existingTags.length) {
-          await ctx.db.update(pools).set({ skillTags: merged }).where(eq(pools.id, input.poolId));
+          // Event frequency limit (events created in the trailing 7 days)
+          if (pool.eventFrequencyLimit != null) {
+            const [recent] = await tx
+              .select({ count: sql<number>`count(*)::int` })
+              .from(events)
+              .where(
+                and(
+                  eq(events.hostId, ctx.userId),
+                  eq(events.poolId, input.poolId),
+                  sql`${events.status} != 'cancelled'`,
+                  sql`${events.createdAt} > now() - interval '7 days'`
+                )
+              );
+            if (recent.count >= pool.eventFrequencyLimit) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `This pool limits hosting to ${pool.eventFrequencyLimit} event(s) per week`,
+              });
+            }
+          }
+
+          const hostBalance = await getAccountBalance(tx, input.poolId, ctx.userId);
+          const pending = await getPendingCommitments(tx, input.poolId, ctx.userId);
+          const capacity = Math.max(
+            0,
+            hostBalance + Math.abs(pool.maxNegativeBalance) - pending
+          );
+          const cost = isGroup ? hostPledgeHours : input.totalHoursNeeded;
+          if (cost > capacity) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: isGroup
+                ? `You can pledge up to ${capacity}h (balance ${hostBalance}h + limit ${Math.abs(pool.maxNegativeBalance)}h${pending > 0 ? ` − ${pending}h committed` : ""}).`
+                : `Your available capacity is ${capacity}h (balance ${hostBalance}h + limit ${Math.abs(pool.maxNegativeBalance)}h${pending > 0 ? ` − ${pending}h already committed` : ""}). Try group hosting to split the cost.`,
+            });
+          }
+
+          const status = isGroup
+            ? hostPledgeHours >= input.totalHoursNeeded
+              ? "open"
+              : "pledging"
+            : "open";
+
+          const [created] = await tx
+            .insert(events)
+            .values({
+              poolId: input.poolId,
+              hostId: ctx.userId,
+              title: input.title,
+              description: input.description,
+              dateStart,
+              dateEnd,
+              locationName: input.locationName,
+              totalHoursNeeded: input.totalHoursNeeded,
+              maxParticipants: input.maxParticipants,
+              minParticipants: input.minParticipants,
+              flexibleHours: input.flexibleHours,
+              skillTags: input.skillTags,
+              potluckUrl: input.potluckUrl,
+              bannerImageUrl: input.bannerImageUrl,
+              hostingType: input.hostingType,
+              status,
+              hoursPledged: isGroup ? hostPledgeHours : 0,
+              coHostCount: isGroup ? 1 : 0,
+            })
+            .returning();
+
+          if (isGroup) {
+            await tx.insert(eventPledges).values({
+              eventId: created.id,
+              accountId: ctx.userId,
+              hoursPledged: hostPledgeHours,
+            });
+          }
+
+          if (input.workAreas && input.workAreas.length > 0) {
+            await tx.insert(eventWorkAreas).values(
+              input.workAreas.map((wa, i) => ({
+                eventId: created.id,
+                name: wa.name,
+                targetHours: wa.targetHours ?? null,
+                sortOrder: i,
+              }))
+            );
+          }
+
+          // Merge new skill tags into the pool's accumulated tags
+          if (input.skillTags && input.skillTags.length > 0) {
+            const existingTags = pool.skillTags || [];
+            const merged = [...new Set([...existingTags, ...input.skillTags])];
+            if (merged.length > existingTags.length) {
+              await tx.update(pools).set({ skillTags: merged }).where(eq(pools.id, input.poolId));
+            }
+          }
+
+          await tx.insert(auditLog).values({
+            poolId: input.poolId,
+            actorId: ctx.userId,
+            action: "event_created",
+            targetType: "event",
+            targetId: created.id,
+            details: { title: input.title, hostingType: input.hostingType, ...(isGroup ? { hostPledgeHours } : {}) },
+          });
+
+          const poolMembers = await tx.query.poolMemberships.findMany({
+            where: and(
+              eq(poolMemberships.poolId, input.poolId),
+              eq(poolMemberships.status, "active"),
+              isNull(poolMemberships.leftAt)
+            ),
+          });
+          const otherIds = poolMembers
+            .filter((m) => m.accountId !== ctx.userId)
+            .map((m) => m.accountId);
+
+          const creator = await tx.query.accounts.findFirst({
+            where: eq(accounts.id, ctx.userId),
+          });
+
+          return {
+            event: created,
+            otherMemberIds: otherIds,
+            creatorName: creator?.displayName ?? "A member",
+          };
         }
-      }
+      );
 
-      await ctx.db.insert(auditLog).values({
-        poolId: input.poolId,
-        actorId: ctx.userId,
-        action: "event_created",
-        targetType: "event",
-        targetId: event.id,
-        details: { title: input.title, hostingType: "group", hostPledgeHours },
-      });
-
-      // Notify pool members
-      const poolMembers = await ctx.db.query.poolMemberships.findMany({
-        where: and(
-          eq(poolMemberships.poolId, input.poolId),
-          isNull(poolMemberships.leftAt)
-        ),
-      });
-      const otherMemberIds = poolMembers
-        .filter((m) => m.accountId !== ctx.userId)
-        .map((m) => m.accountId);
-
-      const creator = await ctx.db.query.accounts.findFirst({
-        where: eq(accounts.id, ctx.userId),
-      });
-
-      const notifBody = event.status === "pledging"
-        ? `${creator?.displayName} is looking for co-hosts for "${input.title}". Pledge hours to help fund it!`
-        : `${creator?.displayName} is hosting "${input.title}". Check it out and claim a slot!`;
-
+      // Notifications after commit
+      const notifBody =
+        event.status === "pledging"
+          ? `${creatorName} is looking for co-hosts for "${input.title}". Pledge hours to help fund it!`
+          : `${creatorName} is hosting "${input.title}". Check it out and claim a slot!`;
       await sendNotificationToMany(otherMemberIds, {
         type: "new_event",
         title: `New event: ${input.title}`,
@@ -345,6 +321,10 @@ export const eventsRouter = router({
   getById: publicProcedure
     .input(z.object({ eventId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
+      // Throttle anonymous reads per IP to deter enumeration/scraping.
+      if (ctx.ip) {
+        await assertRateLimit(ctx.db, `event-view:${ctx.ip}`, 120, 60);
+      }
       const event = await ctx.db.query.events.findFirst({
         where: eq(events.id, input.eventId),
       });
@@ -371,33 +351,36 @@ export const eventsRouter = router({
           .where(eq(events.id, input.eventId));
       }
 
-      // Get host info
-      const host = await ctx.db.query.accounts.findFirst({
-        where: eq(accounts.id, event.hostId),
-      });
+      // Get host info (safe projection — this is a public endpoint)
+      const [host] = await ctx.db
+        .select(memberAccountColumns)
+        .from(accounts)
+        .where(eq(accounts.id, event.hostId));
 
-      // Get pool info
-      const pool = await ctx.db.query.pools.findFirst({
+      // Get pool info (public-safe projection — no governance/chain internals)
+      const poolRow = await ctx.db.query.pools.findFirst({
         where: eq(pools.id, event.poolId),
       });
+      const pool = poolRow ? publicPoolView(poolRow) : null;
 
       // Get claims with account info
       const claims = await ctx.db
         .select({
           claim: eventClaims,
-          account: accounts,
+          account: memberAccountColumns,
         })
         .from(eventClaims)
         .innerJoin(accounts, eq(accounts.id, eventClaims.accountId))
         .where(eq(eventClaims.eventId, input.eventId));
 
       // Get pledges with account info for group events
-      let pledges: { pledge: typeof eventPledges.$inferSelect; account: typeof accounts.$inferSelect }[] = [];
+      type PledgeAccount = { pledge: typeof eventPledges.$inferSelect; account: PublicAccount };
+      let pledges: PledgeAccount[] = [];
       if (event.hostingType === "group") {
         const pledgeRows = await ctx.db
           .select({
             pledge: eventPledges,
-            account: accounts,
+            account: memberAccountColumns,
           })
           .from(eventPledges)
           .innerJoin(accounts, eq(accounts.id, eventPledges.accountId))
@@ -526,7 +509,7 @@ export const eventsRouter = router({
       const eventsList = await ctx.db
         .select({
           event: events,
-          host: accounts,
+          host: memberAccountColumns,
         })
         .from(events)
         .innerJoin(accounts, eq(accounts.id, events.hostId))
@@ -550,125 +533,155 @@ export const eventsRouter = router({
   claim: protectedProcedure
     .input(claimEventSchema)
     .mutation(async ({ ctx, input }) => {
-      const event = await ctx.db.query.events.findFirst({
-        where: eq(events.id, input.eventId),
-      });
-      if (!event) throw new TRPCError({ code: "NOT_FOUND" });
+      // All read-then-write logic runs inside a transaction with the event
+      // row locked (FOR UPDATE) so concurrent claims cannot over-fill the
+      // event past maxParticipants or totalHoursNeeded.
+      const { claim, justConfirmed, hostId, title } = await ctx.db.transaction(
+        async (tx) => {
+          const [event] = await tx
+            .select()
+            .from(events)
+            .where(eq(events.id, input.eventId))
+            .for("update");
+          if (!event) throw new TRPCError({ code: "NOT_FOUND" });
 
-      if (!["open", "confirmed"].includes(event.status)) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Event is not accepting claims",
-        });
-      }
+          if (!["open", "confirmed"].includes(event.status)) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Event is not accepting claims",
+            });
+          }
 
-      // Verify pool membership
-      const membership = await ctx.db.query.poolMemberships.findFirst({
-        where: and(
-          eq(poolMemberships.poolId, event.poolId),
-          eq(poolMemberships.accountId, ctx.userId),
-          isNull(poolMemberships.leftAt)
-        ),
-      });
-      if (!membership) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "Must be a pool member",
-        });
-      }
+          // Verify pool membership
+          const membership = await tx.query.poolMemberships.findFirst({
+            where: and(
+              eq(poolMemberships.poolId, event.poolId),
+              eq(poolMemberships.accountId, ctx.userId),
+              eq(poolMemberships.status, "active"),
+              isNull(poolMemberships.leftAt)
+            ),
+          });
+          if (!membership) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Must be a pool member",
+            });
+          }
 
-      // Check max participants
-      if (event.participantsCount >= event.maxParticipants) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Event is full",
-        });
-      }
+          // Capacity by participants
+          if (event.participantsCount >= event.maxParticipants) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Event is full" });
+          }
 
-      // Check for existing claim
-      const existing = await ctx.db.query.eventClaims.findFirst({
-        where: and(
-          eq(eventClaims.eventId, input.eventId),
-          eq(eventClaims.accountId, ctx.userId)
-        ),
-      });
-      if (existing && existing.status === "claimed") {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "Already claimed",
-        });
-      }
+          // Capacity by hours — a claim cannot push past total hours needed
+          const remaining = event.totalHoursNeeded - event.hoursClaimed;
+          if (remaining <= 0) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "All hours for this event are already claimed",
+            });
+          }
+          if (input.hoursCommitted > remaining) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Only ${remaining}h remain to be claimed`,
+            });
+          }
 
-      let claim;
-      if (existing) {
-        // Re-claim: update cancelled/no-show claim back to active
-        [claim] = await ctx.db
-          .update(eventClaims)
-          .set({
-            status: "claimed",
-            hoursCommitted: input.hoursCommitted,
-            workAreaId: input.workAreaId ?? null,
-            hoursVerified: null,
-            cancelledAt: null,
-            lateCancel: false,
-            verifiedAt: null,
-            createdAt: new Date(),
-          })
-          .where(eq(eventClaims.id, existing.id))
-          .returning();
-      } else {
-        [claim] = await ctx.db
-          .insert(eventClaims)
-          .values({
-            eventId: input.eventId,
-            accountId: ctx.userId,
-            hoursCommitted: input.hoursCommitted,
-            workAreaId: input.workAreaId ?? null,
-          })
-          .returning();
-      }
+          // Non-flexible events require committing the full shift
+          if (!event.flexibleHours) {
+            const durationHours = Math.max(
+              1,
+              Math.round((event.dateEnd.getTime() - event.dateStart.getTime()) / 3_600_000)
+            );
+            if (input.hoursCommitted !== durationHours) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `This event isn't flexible — commit the full ${durationHours}h shift`,
+              });
+            }
+          }
 
-      // Update denormalized counts
-      await ctx.db
-        .update(events)
-        .set({
-          hoursClaimed: sql`${events.hoursClaimed} + ${input.hoursCommitted}`,
-          participantsCount: sql`${events.participantsCount} + 1`,
-          updatedAt: new Date(),
-        })
-        .where(eq(events.id, input.eventId));
+          // Existing claim?
+          const existing = await tx.query.eventClaims.findFirst({
+            where: and(
+              eq(eventClaims.eventId, input.eventId),
+              eq(eventClaims.accountId, ctx.userId)
+            ),
+          });
+          if (existing && existing.status === "claimed") {
+            throw new TRPCError({ code: "CONFLICT", message: "Already claimed" });
+          }
 
-      // Notify host about the claim
+          let claimRow;
+          if (existing) {
+            [claimRow] = await tx
+              .update(eventClaims)
+              .set({
+                status: "claimed",
+                hoursCommitted: input.hoursCommitted,
+                workAreaId: input.workAreaId ?? null,
+                hoursVerified: null,
+                cancelledAt: null,
+                lateCancel: false,
+                verifiedAt: null,
+                createdAt: new Date(),
+              })
+              .where(eq(eventClaims.id, existing.id))
+              .returning();
+          } else {
+            [claimRow] = await tx
+              .insert(eventClaims)
+              .values({
+                eventId: input.eventId,
+                accountId: ctx.userId,
+                hoursCommitted: input.hoursCommitted,
+                workAreaId: input.workAreaId ?? null,
+              })
+              .returning();
+          }
+
+          const newParticipants = event.participantsCount + 1;
+          const willConfirm =
+            event.status === "open" &&
+            newParticipants >= (event.minParticipants ?? 1);
+
+          await tx
+            .update(events)
+            .set({
+              hoursClaimed: sql`${events.hoursClaimed} + ${input.hoursCommitted}`,
+              participantsCount: sql`${events.participantsCount} + 1`,
+              status: willConfirm ? "confirmed" : event.status,
+              updatedAt: new Date(),
+            })
+            .where(eq(events.id, input.eventId));
+
+          return {
+            claim: claimRow,
+            justConfirmed: willConfirm,
+            hostId: event.hostId,
+            title: event.title,
+          };
+        }
+      );
+
+      // Side-effects after commit (don't hold the row lock during fan-out)
       const claimer = await ctx.db.query.accounts.findFirst({
         where: eq(accounts.id, ctx.userId),
       });
       await sendNotification({
-        accountId: event.hostId,
+        accountId: hostId,
         type: "slot_claimed",
-        title: `${claimer?.displayName} claimed ${input.hoursCommitted}h on "${event.title}"`,
-        data: { eventId: event.id },
+        title: `${claimer?.displayName} claimed ${input.hoursCommitted}h on "${title}"`,
+        data: { eventId: input.eventId },
       });
-
-      // Check if min participants reached → confirmed
-      const updatedEvent = await ctx.db.query.events.findFirst({
-        where: eq(events.id, input.eventId),
-      });
-      if (
-        updatedEvent &&
-        updatedEvent.status === "open" &&
-        updatedEvent.participantsCount >= (updatedEvent.minParticipants ?? 1)
-      ) {
-        await ctx.db
-          .update(events)
-          .set({ status: "confirmed", updatedAt: new Date() })
-          .where(eq(events.id, input.eventId));
-
+      if (justConfirmed) {
         await sendNotification({
-          accountId: event.hostId,
+          accountId: hostId,
           type: "event_confirmed",
-          title: `"${event.title}" is confirmed!`,
+          title: `"${title}" is confirmed!`,
           body: "Minimum participants reached.",
-          data: { eventId: event.id },
+          data: { eventId: input.eventId },
         });
       }
 
@@ -780,49 +793,56 @@ export const eventsRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot cancel this event" });
       }
 
-      // Cancel all active claims
-      await ctx.db
-        .update(eventClaims)
-        .set({ status: "cancelled", cancelledAt: new Date() })
-        .where(
-          and(
-            eq(eventClaims.eventId, input.eventId),
-            eq(eventClaims.status, "claimed")
-          )
-        );
-
-      // Cancel all active pledges (for group events)
-      if (event.hostingType === "group") {
-        await ctx.db
-          .update(eventPledges)
-          .set({ status: "withdrawn" })
+      const claimerIds = await ctx.db.transaction(async (tx) => {
+        await tx
+          .update(eventClaims)
+          .set({ status: "cancelled", cancelledAt: new Date() })
           .where(
             and(
-              eq(eventPledges.eventId, input.eventId),
-              eq(eventPledges.status, "active")
+              eq(eventClaims.eventId, input.eventId),
+              eq(eventClaims.status, "claimed")
             )
           );
-      }
 
-      await ctx.db
-        .update(events)
-        .set({
-          status: "cancelled",
-          hoursClaimed: 0,
-          participantsCount: 0,
-          hoursPledged: 0,
-          coHostCount: 0,
-          updatedAt: new Date(),
-        })
-        .where(eq(events.id, input.eventId));
+        if (event.hostingType === "group") {
+          await tx
+            .update(eventPledges)
+            .set({ status: "withdrawn" })
+            .where(
+              and(
+                eq(eventPledges.eventId, input.eventId),
+                eq(eventPledges.status, "active")
+              )
+            );
+        }
 
-      // Notify claimed contributors
-      const claimedUsers = await ctx.db.query.eventClaims.findMany({
-        where: eq(eventClaims.eventId, input.eventId),
+        await tx
+          .update(events)
+          .set({
+            status: "cancelled",
+            hoursClaimed: 0,
+            participantsCount: 0,
+            hoursPledged: 0,
+            coHostCount: 0,
+            updatedAt: new Date(),
+          })
+          .where(eq(events.id, input.eventId));
+
+        await tx.insert(auditLog).values({
+          poolId: event.poolId,
+          actorId: ctx.userId,
+          action: "event_cancelled",
+          targetType: "event",
+          targetId: event.id,
+        });
+
+        const claimedUsers = await tx.query.eventClaims.findMany({
+          where: eq(eventClaims.eventId, input.eventId),
+        });
+        return claimedUsers
+          .filter((c) => c.accountId !== ctx.userId)
+          .map((c) => c.accountId);
       });
-      const claimerIds = claimedUsers
-        .filter((c) => c.accountId !== ctx.userId)
-        .map((c) => c.accountId);
 
       if (claimerIds.length > 0) {
         await sendNotificationToMany(claimerIds, {
@@ -832,14 +852,6 @@ export const eventsRouter = router({
           data: { eventId: event.id, poolId: event.poolId },
         });
       }
-
-      await ctx.db.insert(auditLog).values({
-        poolId: event.poolId,
-        actorId: ctx.userId,
-        action: "event_cancelled",
-        targetType: "event",
-        targetId: event.id,
-      });
 
       return { success: true };
     }),
@@ -878,6 +890,7 @@ export const eventsRouter = router({
         where: eq(vouchers.poolId, event.poolId),
       });
       if (!voucher) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const voucherDecimalFactor = 10 ** voucher.decimals;
 
       // Calculate total hours to distribute
       let totalHoursDistributed = 0;
@@ -892,185 +905,195 @@ export const eventsRouter = router({
       });
       if (!pool) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
-      if (event.hostingType === "solo") {
-        // Solo: single spend from host
-        const hostBalance = await getAccountBalance(ctx.db, event.poolId, ctx.userId);
-        const newBalance = hostBalance - totalHoursDistributed;
-        if (newBalance < pool.maxNegativeBalance) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: `Verification would push your balance (${newBalance}) below the pool limit (${pool.maxNegativeBalance})`,
-          });
-        }
-
-        // Process verifications
-        for (const v of input.verifications) {
-          if (v.attended) {
-            await ctx.db
-              .update(eventClaims)
-              .set({
-                status: "verified_attended",
-                hoursVerified: v.actualHours,
-                verifiedAt: new Date(),
-              })
-              .where(eq(eventClaims.id, v.claimId));
-
-            if (v.actualHours > 0) {
-              await ctx.db.insert(pointTransactions).values({
-                poolId: event.poolId,
-                voucherId: voucher.id,
-                accountId: v.accountId,
-                txType: "earn",
-                value: v.actualHours * 1_000_000,
-                hours: String(v.actualHours),
-                eventId: event.id,
-                eventClaimId: v.claimId,
-              });
-            }
-          } else {
-            await ctx.db
-              .update(eventClaims)
-              .set({
-                status: "verified_noshow",
-                hoursVerified: 0,
-                verifiedAt: new Date(),
-              })
-              .where(eq(eventClaims.id, v.claimId));
-          }
-        }
-
-        // Host spend transaction
-        if (totalHoursDistributed > 0) {
-          await ctx.db.insert(pointTransactions).values({
-            poolId: event.poolId,
-            voucherId: voucher.id,
-            accountId: event.hostId,
-            txType: "spend",
-            value: totalHoursDistributed * 1_000_000,
-            hours: String(totalHoursDistributed),
-            eventId: event.id,
-          });
-        }
-      } else {
-        // Group: proportional split among co-hosts
-        const activePledges = await ctx.db
+      // All balance guards and ledger writes happen atomically. Either every
+      // earn/spend row and the event status update commit together, or none
+      // do — the ledger can never be left half-applied.
+      await ctx.db.transaction(async (tx) => {
+        // Lock the event row and re-validate status to make verification
+        // idempotent against concurrent submissions.
+        const [locked] = await tx
           .select()
-          .from(eventPledges)
-          .where(
-            and(
-              eq(eventPledges.eventId, input.eventId),
-              eq(eventPledges.status, "active")
-            )
-          );
-
-        if (activePledges.length === 0) {
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "No active pledges found for group event",
-          });
+          .from(events)
+          .where(eq(events.id, input.eventId))
+          .for("update");
+        if (!locked) throw new TRPCError({ code: "NOT_FOUND" });
+        if (locked.status === "verified") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Already verified" });
         }
 
-        // Compute proportional shares
-        const shares = splitProportional(
-          totalHoursDistributed,
-          activePledges.map((p) => ({ accountId: p.accountId, hours: p.hoursPledged }))
-        );
-
-        // Validate each co-host can cover their share
-        for (const [accountId, shareHours] of shares) {
-          if (shareHours === 0) continue;
-          const balance = await getAccountBalance(ctx.db, event.poolId, accountId);
-          const newBalance = balance - shareHours;
+        if (event.hostingType === "solo") {
+          // Solo: single spend from host
+          const hostBalance = await getAccountBalance(tx, event.poolId, ctx.userId);
+          const newBalance = hostBalance - totalHoursDistributed;
           if (newBalance < pool.maxNegativeBalance) {
-            const account = await ctx.db.query.accounts.findFirst({
-              where: eq(accounts.id, accountId),
-            });
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: `Co-host ${account?.displayName || accountId} can't cover their share (${shareHours}h). Their balance is ${balance}h, limit is ${pool.maxNegativeBalance}h.`,
+              message: `Verification would push your balance (${newBalance}) below the pool limit (${pool.maxNegativeBalance})`,
             });
           }
-        }
 
-        // Process verifications (earn transactions for contributors)
-        for (const v of input.verifications) {
-          if (v.attended) {
-            await ctx.db
-              .update(eventClaims)
-              .set({
-                status: "verified_attended",
-                hoursVerified: v.actualHours,
-                verifiedAt: new Date(),
-              })
-              .where(eq(eventClaims.id, v.claimId));
+          for (const v of input.verifications) {
+            if (v.attended) {
+              await tx
+                .update(eventClaims)
+                .set({
+                  status: "verified_attended",
+                  hoursVerified: v.actualHours,
+                  verifiedAt: new Date(),
+                })
+                .where(eq(eventClaims.id, v.claimId));
 
-            if (v.actualHours > 0) {
-              await ctx.db.insert(pointTransactions).values({
-                poolId: event.poolId,
-                voucherId: voucher.id,
-                accountId: v.accountId,
-                txType: "earn",
-                value: v.actualHours * 1_000_000,
-                hours: String(v.actualHours),
-                eventId: event.id,
-                eventClaimId: v.claimId,
+              if (v.actualHours > 0) {
+                await tx.insert(pointTransactions).values({
+                  poolId: event.poolId,
+                  voucherId: voucher.id,
+                  accountId: v.accountId,
+                  txType: "earn",
+                  value: v.actualHours * voucherDecimalFactor,
+                  hours: String(v.actualHours),
+                  eventId: event.id,
+                  eventClaimId: v.claimId,
+                });
+              }
+            } else {
+              await tx
+                .update(eventClaims)
+                .set({
+                  status: "verified_noshow",
+                  hoursVerified: 0,
+                  verifiedAt: new Date(),
+                })
+                .where(eq(eventClaims.id, v.claimId));
+            }
+          }
+
+          if (totalHoursDistributed > 0) {
+            await tx.insert(pointTransactions).values({
+              poolId: event.poolId,
+              voucherId: voucher.id,
+              accountId: event.hostId,
+              txType: "spend",
+              value: totalHoursDistributed * voucherDecimalFactor,
+              hours: String(totalHoursDistributed),
+              eventId: event.id,
+            });
+          }
+        } else {
+          // Group: proportional split among co-hosts
+          const activePledges = await tx
+            .select()
+            .from(eventPledges)
+            .where(
+              and(
+                eq(eventPledges.eventId, input.eventId),
+                eq(eventPledges.status, "active")
+              )
+            );
+
+          if (activePledges.length === 0) {
+            throw new TRPCError({
+              code: "INTERNAL_SERVER_ERROR",
+              message: "No active pledges found for group event",
+            });
+          }
+
+          const shares = splitProportional(
+            totalHoursDistributed,
+            activePledges.map((p) => ({ accountId: p.accountId, hours: p.hoursPledged }))
+          );
+
+          for (const [accountId, shareHours] of shares) {
+            if (shareHours === 0) continue;
+            const balance = await getAccountBalance(tx, event.poolId, accountId);
+            const newBalance = balance - shareHours;
+            if (newBalance < pool.maxNegativeBalance) {
+              const account = await tx.query.accounts.findFirst({
+                where: eq(accounts.id, accountId),
+              });
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Co-host ${account?.displayName || accountId} can't cover their share (${shareHours}h). Their balance is ${balance}h, limit is ${pool.maxNegativeBalance}h.`,
               });
             }
-          } else {
-            await ctx.db
-              .update(eventClaims)
-              .set({
-                status: "verified_noshow",
-                hoursVerified: 0,
-                verifiedAt: new Date(),
-              })
-              .where(eq(eventClaims.id, v.claimId));
           }
+
+          for (const v of input.verifications) {
+            if (v.attended) {
+              await tx
+                .update(eventClaims)
+                .set({
+                  status: "verified_attended",
+                  hoursVerified: v.actualHours,
+                  verifiedAt: new Date(),
+                })
+                .where(eq(eventClaims.id, v.claimId));
+
+              if (v.actualHours > 0) {
+                await tx.insert(pointTransactions).values({
+                  poolId: event.poolId,
+                  voucherId: voucher.id,
+                  accountId: v.accountId,
+                  txType: "earn",
+                  value: v.actualHours * voucherDecimalFactor,
+                  hours: String(v.actualHours),
+                  eventId: event.id,
+                  eventClaimId: v.claimId,
+                });
+              }
+            } else {
+              await tx
+                .update(eventClaims)
+                .set({
+                  status: "verified_noshow",
+                  hoursVerified: 0,
+                  verifiedAt: new Date(),
+                })
+                .where(eq(eventClaims.id, v.claimId));
+            }
+          }
+
+          for (const [accountId, shareHours] of shares) {
+            if (shareHours === 0) continue;
+            await tx.insert(pointTransactions).values({
+              poolId: event.poolId,
+              voucherId: voucher.id,
+              accountId,
+              txType: "spend",
+              value: shareHours * voucherDecimalFactor,
+              hours: String(shareHours),
+              eventId: event.id,
+            });
+          }
+
+          await tx
+            .update(eventPledges)
+            .set({ status: "spent", spentAt: new Date() })
+            .where(
+              and(
+                eq(eventPledges.eventId, input.eventId),
+                eq(eventPledges.status, "active")
+              )
+            );
         }
 
-        // Create spend transactions for each co-host
-        for (const [accountId, shareHours] of shares) {
-          if (shareHours === 0) continue;
-          await ctx.db.insert(pointTransactions).values({
-            poolId: event.poolId,
-            voucherId: voucher.id,
-            accountId,
-            txType: "spend",
-            value: shareHours * 1_000_000,
-            hours: String(shareHours),
-            eventId: event.id,
-          });
-        }
+        // Update event status
+        await tx
+          .update(events)
+          .set({
+            status: "verified",
+            hoursVerified: totalHoursDistributed,
+            updatedAt: new Date(),
+          })
+          .where(eq(events.id, input.eventId));
 
-        // Update pledge statuses to "spent"
-        await ctx.db
-          .update(eventPledges)
-          .set({ status: "spent", spentAt: new Date() })
-          .where(
-            and(
-              eq(eventPledges.eventId, input.eventId),
-              eq(eventPledges.status, "active")
-            )
-          );
-      }
-
-      // Update event status
-      await ctx.db
-        .update(events)
-        .set({
-          status: "verified",
-          hoursVerified: totalHoursDistributed,
-          updatedAt: new Date(),
-        })
-        .where(eq(events.id, input.eventId));
-
-      await ctx.db.insert(auditLog).values({
-        poolId: event.poolId,
-        actorId: ctx.userId,
-        action: "event_verified",
-        targetType: "event",
-        targetId: event.id,
-        details: { totalHoursDistributed, hostingType: event.hostingType },
+        await tx.insert(auditLog).values({
+          poolId: event.poolId,
+          actorId: ctx.userId,
+          action: "event_verified",
+          targetType: "event",
+          targetId: event.id,
+          details: { totalHoursDistributed, hostingType: event.hostingType },
+        });
       });
 
       // Send notifications to contributors
@@ -1140,127 +1163,122 @@ export const eventsRouter = router({
   pledge: protectedProcedure
     .input(pledgeEventSchema)
     .mutation(async ({ ctx, input }) => {
-      const event = await ctx.db.query.events.findFirst({
-        where: eq(events.id, input.eventId),
-      });
-      if (!event) throw new TRPCError({ code: "NOT_FOUND" });
+      const { hostId, title, poolId, becameFunded, fundedMemberIds } =
+        await ctx.db.transaction(async (tx) => {
+          // Lock the event row so concurrent pledges see a consistent
+          // hoursPledged and the funding transition fires exactly once.
+          const [event] = await tx
+            .select()
+            .from(events)
+            .where(eq(events.id, input.eventId))
+            .for("update");
+          if (!event) throw new TRPCError({ code: "NOT_FOUND" });
 
-      if (event.hostingType !== "group") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Only group events accept pledges" });
-      }
-
-      if (event.status !== "pledging") {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Event is no longer accepting pledges" });
-      }
-
-      // Verify pool membership
-      const membership = await ctx.db.query.poolMemberships.findFirst({
-        where: and(
-          eq(poolMemberships.poolId, event.poolId),
-          eq(poolMemberships.accountId, ctx.userId),
-          isNull(poolMemberships.leftAt)
-        ),
-      });
-      if (!membership) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Must be a pool member" });
-      }
-
-      // Validate pledger's balance can support the pledge (accounting for other commitments)
-      const pool = await ctx.db.query.pools.findFirst({
-        where: eq(pools.id, event.poolId),
-      });
-      if (!pool) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-
-      const balance = await getAccountBalance(ctx.db, event.poolId, ctx.userId);
-      const pending = await getPendingCommitments(ctx.db, event.poolId, ctx.userId, input.eventId);
-      const capacity = Math.max(0, balance + Math.abs(pool.maxNegativeBalance) - pending);
-      if (input.hoursPledged > capacity) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `You can pledge up to ${capacity}h (balance ${balance}h + limit ${Math.abs(pool.maxNegativeBalance)}h${pending > 0 ? ` − ${pending}h committed` : ""}).`,
-        });
-      }
-
-      // Check for existing pledge (upsert for re-pledge after withdraw)
-      const existing = await ctx.db.query.eventPledges.findFirst({
-        where: and(
-          eq(eventPledges.eventId, input.eventId),
-          eq(eventPledges.accountId, ctx.userId)
-        ),
-      });
-
-      if (existing) {
-        if (existing.status === "active") {
-          throw new TRPCError({ code: "CONFLICT", message: "You already have an active pledge" });
-        }
-        // Re-pledge after withdrawal
-        const hoursDiff = input.hoursPledged - (existing.status === "withdrawn" ? 0 : existing.hoursPledged);
-        await ctx.db
-          .update(eventPledges)
-          .set({ status: "active", hoursPledged: input.hoursPledged })
-          .where(eq(eventPledges.id, existing.id));
-
-        await ctx.db
-          .update(events)
-          .set({
-            hoursPledged: sql`${events.hoursPledged} + ${input.hoursPledged}`,
-            coHostCount: sql`${events.coHostCount} + 1`,
-            updatedAt: new Date(),
-          })
-          .where(eq(events.id, input.eventId));
-      } else {
-        await ctx.db.insert(eventPledges).values({
-          eventId: input.eventId,
-          accountId: ctx.userId,
-          hoursPledged: input.hoursPledged,
-        });
-
-        await ctx.db
-          .update(events)
-          .set({
-            hoursPledged: sql`${events.hoursPledged} + ${input.hoursPledged}`,
-            coHostCount: sql`${events.coHostCount} + 1`,
-            updatedAt: new Date(),
-          })
-          .where(eq(events.id, input.eventId));
-      }
-
-      // Check if funding threshold reached → transition to open
-      const updatedEvent = await ctx.db.query.events.findFirst({
-        where: eq(events.id, input.eventId),
-      });
-      if (updatedEvent && updatedEvent.hoursPledged >= updatedEvent.totalHoursNeeded) {
-        await ctx.db
-          .update(events)
-          .set({ status: "open", updatedAt: new Date() })
-          .where(eq(events.id, input.eventId));
-
-        // Notify all co-hosts and pool members
-        const poolMembers = await ctx.db.query.poolMemberships.findMany({
-          where: and(
-            eq(poolMemberships.poolId, event.poolId),
-            isNull(poolMemberships.leftAt)
-          ),
-        });
-        await sendNotificationToMany(
-          poolMembers.map((m) => m.accountId),
-          {
-            type: "new_event",
-            title: `"${event.title}" is fully funded!`,
-            body: "The event is now open for labor claims.",
-            data: { eventId: event.id, poolId: event.poolId },
+          if (event.hostingType !== "group") {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Only group events accept pledges" });
           }
-        );
-      }
+          if (event.status !== "pledging") {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Event is no longer accepting pledges" });
+          }
 
+          const membership = await tx.query.poolMemberships.findFirst({
+            where: and(
+              eq(poolMemberships.poolId, event.poolId),
+              eq(poolMemberships.accountId, ctx.userId),
+              eq(poolMemberships.status, "active"),
+              isNull(poolMemberships.leftAt)
+            ),
+          });
+          if (!membership) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Must be a pool member" });
+          }
+
+          const pool = await tx.query.pools.findFirst({ where: eq(pools.id, event.poolId) });
+          if (!pool) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+          const balance = await getAccountBalance(tx, event.poolId, ctx.userId);
+          const pending = await getPendingCommitments(tx, event.poolId, ctx.userId, input.eventId);
+          const capacity = Math.max(0, balance + Math.abs(pool.maxNegativeBalance) - pending);
+          if (input.hoursPledged > capacity) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `You can pledge up to ${capacity}h (balance ${balance}h + limit ${Math.abs(pool.maxNegativeBalance)}h${pending > 0 ? ` − ${pending}h committed` : ""}).`,
+            });
+          }
+
+          const existing = await tx.query.eventPledges.findFirst({
+            where: and(
+              eq(eventPledges.eventId, input.eventId),
+              eq(eventPledges.accountId, ctx.userId)
+            ),
+          });
+          if (existing && existing.status === "active") {
+            throw new TRPCError({ code: "CONFLICT", message: "You already have an active pledge" });
+          }
+
+          if (existing) {
+            await tx
+              .update(eventPledges)
+              .set({ status: "active", hoursPledged: input.hoursPledged })
+              .where(eq(eventPledges.id, existing.id));
+          } else {
+            await tx.insert(eventPledges).values({
+              eventId: input.eventId,
+              accountId: ctx.userId,
+              hoursPledged: input.hoursPledged,
+            });
+          }
+
+          const newHoursPledged = event.hoursPledged + input.hoursPledged;
+          const funded = newHoursPledged >= event.totalHoursNeeded;
+          await tx
+            .update(events)
+            .set({
+              hoursPledged: newHoursPledged,
+              coHostCount: sql`${events.coHostCount} + 1`,
+              status: funded ? "open" : event.status,
+              updatedAt: new Date(),
+            })
+            .where(eq(events.id, input.eventId));
+
+          let memberIds: string[] = [];
+          if (funded) {
+            const poolMembers = await tx.query.poolMemberships.findMany({
+              where: and(
+                eq(poolMemberships.poolId, event.poolId),
+                eq(poolMemberships.status, "active"),
+                isNull(poolMemberships.leftAt)
+              ),
+            });
+            memberIds = poolMembers.map((m) => m.accountId);
+          }
+
+          return {
+            hostId: event.hostId,
+            title: event.title,
+            poolId: event.poolId,
+            becameFunded: funded,
+            fundedMemberIds: memberIds,
+          };
+        });
+
+      // Notifications after commit
+      if (becameFunded) {
+        await sendNotificationToMany(fundedMemberIds, {
+          type: "new_event",
+          title: `"${title}" is fully funded!`,
+          body: "The event is now open for labor claims.",
+          data: { eventId: input.eventId, poolId },
+        });
+      }
       const pledger = await ctx.db.query.accounts.findFirst({
         where: eq(accounts.id, ctx.userId),
       });
       await sendNotification({
-        accountId: event.hostId,
+        accountId: hostId,
         type: "new_event",
-        title: `${pledger?.displayName} pledged ${input.hoursPledged}h for "${event.title}"`,
-        data: { eventId: event.id },
+        title: `${pledger?.displayName} pledged ${input.hoursPledged}h for "${title}"`,
+        data: { eventId: input.eventId },
       });
 
       return { success: true };
@@ -1415,7 +1433,7 @@ export const eventsRouter = router({
         claim: eventClaims,
         event: events,
         pool: pools,
-        host: accounts,
+        host: memberAccountColumns,
       })
       .from(eventClaims)
       .innerJoin(events, eq(events.id, eventClaims.eventId))

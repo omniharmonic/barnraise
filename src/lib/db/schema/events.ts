@@ -53,6 +53,10 @@ export const events = pgTable(
     hoursPledged: integer("hours_pledged").notNull().default(0),
     coHostCount: integer("co_host_count").notNull().default(0),
 
+    // Cron dedupe: when the 24h reminder / verify request were sent
+    reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
+    verifyRequestSentAt: timestamp("verify_request_sent_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

@@ -9,19 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
+import { balanceColor } from "@/lib/ui/colors";
 import {
   User,
-  MapPin,
   Save,
   Camera,
-  Clock,
-  Users,
-  CheckCircle2,
-  AlertTriangle,
   ArrowRight,
-  BarChart3,
-  CalendarDays,
 } from "lucide-react";
 
 const SKILL_OPTIONS = [
@@ -46,6 +39,7 @@ export default function ProfilePage() {
   });
   const [dirty, setDirty] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [emailDigest, setEmailDigest] = useState<"instant" | "daily" | "weekly" | "off">("instant");
 
   useEffect(() => {
     if (me) {
@@ -56,8 +50,16 @@ export default function ProfilePage() {
         skills: me.skills || [],
         avatarUrl: me.avatarUrl || null,
       });
+      setEmailDigest(
+        (me.emailDigest as "instant" | "daily" | "weekly" | "off") ?? "instant"
+      );
     }
   }, [me]);
+
+  const updateNotifications = useMutation({
+    ...trpc.users.updateNotificationSettings.mutationOptions(),
+    onSuccess: () => queryClient.invalidateQueries(),
+  });
 
   const updateProfile = useMutation({
     ...trpc.users.updateProfile.mutationOptions(),
@@ -164,7 +166,7 @@ export default function ProfilePage() {
               <div className="text-walnut-muted text-xs uppercase tracking-wider mb-1.5">
                 Total Balance
               </div>
-              <div className={`text-2xl font-mono font-medium ${totals.balance >= 0 ? "text-sage" : "text-barn"}`}>
+              <div className={`text-2xl font-mono font-medium ${balanceColor(totals.balance)}`}>
                 {totals.balance >= 0 ? "+" : ""}{totals.balance}h
               </div>
               <div className="text-xs text-walnut-muted mt-1 font-mono">
@@ -247,7 +249,7 @@ export default function ProfilePage() {
                   <div className="flex items-center gap-3">
                     <div
                       className={`text-sm font-mono font-medium ${
-                        p.balance >= 0 ? "text-sage" : "text-barn"
+                        balanceColor(p.balance)
                       }`}
                     >
                       {p.balance >= 0 ? "+" : ""}
@@ -261,6 +263,46 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Notification preferences */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Notifications</CardTitle>
+          <CardDescription>
+            How often we email you about pool and event activity. In-app
+            notifications are always on.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {(
+              [
+                ["instant", "Instant"],
+                ["daily", "Daily digest"],
+                ["weekly", "Weekly digest"],
+                ["off", "Off"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={emailDigest === value}
+                onClick={() => {
+                  setEmailDigest(value);
+                  updateNotifications.mutate({ emailDigest: value });
+                }}
+                className={`rounded-xl border px-3 py-2 text-sm transition-colors ${
+                  emailDigest === value
+                    ? "border-barn bg-barn-light/40 text-walnut font-medium"
+                    : "border-earth bg-cream-light text-walnut-muted hover:bg-cream-dark"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Edit form */}
       <Card>

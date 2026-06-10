@@ -23,9 +23,10 @@ import {
   BarChart3,
   AlertTriangle,
 } from "lucide-react";
-import { formatDate, formatHours } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { eventBannerGradient } from "@/lib/utils/event-banners";
 import { AvatarCircle } from "@/components/ui/avatar-circle";
+import { balanceColor } from "@/lib/ui/colors";
 
 export default function PoolDashboardPage({
   params,
@@ -202,7 +203,7 @@ export default function PoolDashboardPage({
             </div>
             <div
               className={`text-3xl font-mono font-medium ${
-                userBalance.balance >= 0 ? "text-sage" : "text-barn"
+                balanceColor(userBalance.balance)
               }`}
             >
               {userBalance.balance >= 0 ? "+" : ""}
@@ -507,7 +508,7 @@ export default function PoolDashboardPage({
                   <div className="text-right">
                     <div
                       className={`text-sm font-mono font-medium ${
-                        member.balance >= 0 ? "text-sage" : "text-barn"
+                        balanceColor(member.balance)
                       }`}
                     >
                       {member.balance >= 0 ? "+" : ""}

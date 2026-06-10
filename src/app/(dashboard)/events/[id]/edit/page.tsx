@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useEffect } from "react";
+import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/lib/trpc/react";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Trash2, AlertTriangle, ArrowLeft, Plus, X, Layers } from "lucide-react";
 import Link from "next/link";
 
@@ -51,30 +52,31 @@ export default function EditEventPage({
     skillTags: [] as string[],
     workAreas: [] as { name: string; targetHours: number | null }[],
   });
-  const [initialized, setInitialized] = useState(false);
+  const [initializedId, setInitializedId] = useState<string | null>(null);
   const [newWorkArea, setNewWorkArea] = useState("");
 
-  useEffect(() => {
-    if (event && !initialized) {
-      setForm({
-        title: event.title,
-        description: event.description || "",
-        dateStart: toLocalDatetime(event.dateStart as unknown as string),
-        dateEnd: toLocalDatetime(event.dateEnd as unknown as string),
-        locationName: event.locationName || "",
-        totalHoursNeeded: event.totalHoursNeeded,
-        maxParticipants: event.maxParticipants,
-        minParticipants: event.minParticipants ?? 1,
-        flexibleHours: event.flexibleHours ?? true,
-        skillTags: event.skillTags || [],
-        workAreas: (event.workAreas || []).map((wa: { name: string; targetHours: number | null }) => ({
-          name: wa.name,
-          targetHours: wa.targetHours,
-        })),
-      });
-      setInitialized(true);
-    }
-  }, [event, initialized]);
+  // Populate the form once the event loads. Adjusting state during render
+  // (the React-recommended pattern) instead of in an effect avoids a
+  // cascading-render cycle.
+  if (event && initializedId !== event.id) {
+    setInitializedId(event.id);
+    setForm({
+      title: event.title,
+      description: event.description || "",
+      dateStart: toLocalDatetime(event.dateStart as unknown as string),
+      dateEnd: toLocalDatetime(event.dateEnd as unknown as string),
+      locationName: event.locationName || "",
+      totalHoursNeeded: event.totalHoursNeeded,
+      maxParticipants: event.maxParticipants,
+      minParticipants: event.minParticipants ?? 1,
+      flexibleHours: event.flexibleHours ?? true,
+      skillTags: event.skillTags || [],
+      workAreas: (event.workAreas || []).map((wa: { name: string; targetHours: number | null }) => ({
+        name: wa.name,
+        targetHours: wa.targetHours,
+      })),
+    });
+  }
 
   const updateEvent = useMutation({
     ...trpc.events.update.mutationOptions(),
@@ -471,20 +473,24 @@ export default function EditEventPage({
                 All claimed slots and co-host pledges will be released. This cannot be undone.
               </p>
             </div>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="w-full sm:w-auto"
-              onClick={() => {
-                if (confirm("Cancel this event? All claimed slots and pledges will be released.")) {
-                  cancelEventMutation.mutate({ eventId });
-                }
-              }}
-              disabled={cancelEventMutation.isPending}
+            <ConfirmDialog
+              title="Cancel this event?"
+              description="All claimed slots and co-host pledges will be released. This cannot be undone."
+              confirmLabel="Cancel Event"
+              cancelLabel="Keep Event"
+              destructive
+              onConfirm={() => cancelEventMutation.mutate({ eventId })}
             >
-              <Trash2 className="h-3.5 w-3.5" />
-              {cancelEventMutation.isPending ? "Cancelling..." : "Cancel Event"}
-            </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="w-full sm:w-auto"
+                disabled={cancelEventMutation.isPending}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {cancelEventMutation.isPending ? "Cancelling..." : "Cancel Event"}
+              </Button>
+            </ConfirmDialog>
           </div>
         </CardContent>
       </Card>

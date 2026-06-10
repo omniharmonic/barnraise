@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { AvatarCircle } from "@/components/ui/avatar-circle";
 import { formatDate } from "@/lib/utils";
+import { balanceColor, reliabilityColor } from "@/lib/ui/colors";
 
 export default function MemberProfilePage({
   params,
@@ -42,15 +43,8 @@ export default function MemberProfilePage({
 
   if (!profile?.account) return <div className="text-walnut-muted text-center py-16">Member not found</div>;
 
-  const reliabilityColor =
-    profile.attendanceReliability >= 80
-      ? "text-sage"
-      : profile.attendanceReliability >= 50
-      ? "text-golden-dark"
-      : "text-barn";
-
-  const balanceColor =
-    profile.balance >= 0 ? "text-sage" : "text-barn";
+  const reliabilityCls = reliabilityColor(profile.attendanceReliability);
+  const balanceCls = balanceColor(profile.balance);
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -107,7 +101,7 @@ export default function MemberProfilePage({
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
         <Card className="animate-fade-in-up stagger-1">
           <CardContent className="pt-6 text-center">
-            <div className={`text-2xl font-mono font-medium ${balanceColor}`}>
+            <div className={`text-2xl font-mono font-medium ${balanceCls}`}>
               {profile.balance >= 0 ? "+" : ""}
               {profile.balance}h
             </div>
@@ -116,7 +110,7 @@ export default function MemberProfilePage({
         </Card>
         <Card className="animate-fade-in-up stagger-2">
           <CardContent className="pt-6 text-center">
-            <div className={`text-2xl font-mono font-medium ${reliabilityColor}`}>
+            <div className={`text-2xl font-mono font-medium ${reliabilityCls}`}>
               {Math.round(profile.attendanceReliability)}%
             </div>
             <div className="text-xs text-walnut-muted mt-1">Reliability</div>

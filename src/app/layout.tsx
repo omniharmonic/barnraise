@@ -26,8 +26,7 @@ import type { Viewport } from "next";
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  // Do not disable zoom — pinch-to-zoom is a WCAG accessibility requirement.
 };
 
 export const metadata: Metadata = {
