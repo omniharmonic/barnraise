@@ -10,6 +10,7 @@ export type NotificationType =
   | "points_earned"
   | "noshow_marked"
   | "member_joined"
+  | "member_removed"
   | "invite_received"
   | "noshow_flag";
 

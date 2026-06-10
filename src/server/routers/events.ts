@@ -117,7 +117,7 @@ function splitProportional(total: number, pledges: { accountId: string; hours: n
     return { accountId: p.accountId, floored, remainder: exact - floored };
   });
 
-  let distributed = shares.reduce((s, sh) => s + sh.floored, 0);
+  const distributed = shares.reduce((s, sh) => s + sh.floored, 0);
   let remaining = total - distributed;
 
   // Sort by largest remainder descending

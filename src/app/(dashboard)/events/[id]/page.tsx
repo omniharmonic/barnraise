@@ -17,13 +17,9 @@ import {
   Users,
   User,
   CheckCircle2,
-  XCircle,
   Share2,
   AlertTriangle,
-  ArrowRight,
   Settings,
-  Pencil,
-  Trash2,
   Calendar,
   Navigation,
   Layers,
@@ -78,11 +74,6 @@ export default function EventDetailPage({
       queryClient.invalidateQueries();
       setEditingClaim(false);
     },
-  });
-
-  const cancelEventMutation = useMutation({
-    ...trpc.events.cancelEvent.mutationOptions(),
-    onSuccess: () => queryClient.invalidateQueries(),
   });
 
   const pledgeMutation = useMutation({

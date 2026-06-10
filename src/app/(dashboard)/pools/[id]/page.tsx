@@ -23,7 +23,7 @@ import {
   BarChart3,
   AlertTriangle,
 } from "lucide-react";
-import { formatDate, formatHours } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { eventBannerGradient } from "@/lib/utils/event-banners";
 import { AvatarCircle } from "@/components/ui/avatar-circle";
 

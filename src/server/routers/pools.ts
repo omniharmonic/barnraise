@@ -376,10 +376,12 @@ export const poolsRouter = router({
         details: { reason: input.reason },
       });
 
-      const removed = await ctx.db.query.accounts.findFirst({ where: eq(accounts.id, input.accountId) });
+      const removedFromPool = await ctx.db.query.pools.findFirst({
+        where: eq(pools.id, input.poolId),
+      });
       await sendNotificationToMany([input.accountId], {
-        type: "member_joined",
-        title: `You were removed from ${(await ctx.db.query.pools.findFirst({ where: eq(pools.id, input.poolId) }))?.name}`,
+        type: "member_removed",
+        title: `You were removed from ${removedFromPool?.name}`,
         body: input.reason || undefined,
         data: { poolId: input.poolId },
       });

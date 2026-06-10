@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useEffect } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
@@ -48,23 +48,25 @@ export default function PoolSettingsPage({
   });
   const [newLinkLabel, setNewLinkLabel] = useState("");
   const [newLinkUrl, setNewLinkUrl] = useState("");
+  const [initializedId, setInitializedId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (poolData?.pool) {
-      const p = poolData.pool;
-      setForm({
-        name: p.name,
-        description: p.description || "",
-        locationName: p.locationName || "",
-        websiteUrl: p.websiteUrl || "",
-        groupChatUrl: p.groupChatUrl || "",
-        customLinks: (p.customLinks as { label: string; url: string }[] | null) || [],
-        joinPolicy: p.joinPolicy as typeof form.joinPolicy,
-        startingBalance: p.startingBalance,
-        maxNegativeBalance: p.maxNegativeBalance,
-      });
-    }
-  }, [poolData]);
+  // Populate the form once the pool loads — adjust state during render
+  // rather than in an effect to avoid a cascading-render cycle.
+  if (poolData?.pool && initializedId !== poolData.pool.id) {
+    const p = poolData.pool;
+    setInitializedId(p.id);
+    setForm({
+      name: p.name,
+      description: p.description || "",
+      locationName: p.locationName || "",
+      websiteUrl: p.websiteUrl || "",
+      groupChatUrl: p.groupChatUrl || "",
+      customLinks: (p.customLinks as { label: string; url: string }[] | null) || [],
+      joinPolicy: p.joinPolicy as typeof form.joinPolicy,
+      startingBalance: p.startingBalance,
+      maxNegativeBalance: p.maxNegativeBalance,
+    });
+  }
 
   const updateSettings = useMutation({
     ...trpc.pools.updateSettings.mutationOptions(),
@@ -364,7 +366,7 @@ export default function PoolSettingsPage({
         <Button variant="outline" onClick={() => router.back()}>Cancel</Button>
         <Button
           onClick={() => {
-            const payload: Record<string, unknown> = {
+            updateSettings.mutate({
               poolId,
               name: form.name,
               description: form.description,
@@ -372,11 +374,10 @@ export default function PoolSettingsPage({
               joinPolicy: form.joinPolicy,
               startingBalance: form.startingBalance,
               maxNegativeBalance: form.maxNegativeBalance,
-            };
-            if (form.websiteUrl) payload.websiteUrl = form.websiteUrl;
-            if (form.groupChatUrl) payload.groupChatUrl = form.groupChatUrl;
-            if (form.customLinks.length > 0) payload.customLinks = form.customLinks;
-            updateSettings.mutate(payload as any);
+              websiteUrl: form.websiteUrl || undefined,
+              groupChatUrl: form.groupChatUrl || undefined,
+              customLinks: form.customLinks.length > 0 ? form.customLinks : undefined,
+            });
           }}
           disabled={updateSettings.isPending}
         >

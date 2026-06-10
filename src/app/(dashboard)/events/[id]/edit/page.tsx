@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useEffect } from "react";
+import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/lib/trpc/react";
@@ -51,30 +51,31 @@ export default function EditEventPage({
     skillTags: [] as string[],
     workAreas: [] as { name: string; targetHours: number | null }[],
   });
-  const [initialized, setInitialized] = useState(false);
+  const [initializedId, setInitializedId] = useState<string | null>(null);
   const [newWorkArea, setNewWorkArea] = useState("");
 
-  useEffect(() => {
-    if (event && !initialized) {
-      setForm({
-        title: event.title,
-        description: event.description || "",
-        dateStart: toLocalDatetime(event.dateStart as unknown as string),
-        dateEnd: toLocalDatetime(event.dateEnd as unknown as string),
-        locationName: event.locationName || "",
-        totalHoursNeeded: event.totalHoursNeeded,
-        maxParticipants: event.maxParticipants,
-        minParticipants: event.minParticipants ?? 1,
-        flexibleHours: event.flexibleHours ?? true,
-        skillTags: event.skillTags || [],
-        workAreas: (event.workAreas || []).map((wa: { name: string; targetHours: number | null }) => ({
-          name: wa.name,
-          targetHours: wa.targetHours,
-        })),
-      });
-      setInitialized(true);
-    }
-  }, [event, initialized]);
+  // Populate the form once the event loads. Adjusting state during render
+  // (the React-recommended pattern) instead of in an effect avoids a
+  // cascading-render cycle.
+  if (event && initializedId !== event.id) {
+    setInitializedId(event.id);
+    setForm({
+      title: event.title,
+      description: event.description || "",
+      dateStart: toLocalDatetime(event.dateStart as unknown as string),
+      dateEnd: toLocalDatetime(event.dateEnd as unknown as string),
+      locationName: event.locationName || "",
+      totalHoursNeeded: event.totalHoursNeeded,
+      maxParticipants: event.maxParticipants,
+      minParticipants: event.minParticipants ?? 1,
+      flexibleHours: event.flexibleHours ?? true,
+      skillTags: event.skillTags || [],
+      workAreas: (event.workAreas || []).map((wa: { name: string; targetHours: number | null }) => ({
+        name: wa.name,
+        targetHours: wa.targetHours,
+      })),
+    });
+  }
 
   const updateEvent = useMutation({
     ...trpc.events.update.mutationOptions(),

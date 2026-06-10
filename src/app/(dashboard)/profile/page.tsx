@@ -9,19 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
   User,
-  MapPin,
   Save,
   Camera,
-  Clock,
-  Users,
-  CheckCircle2,
-  AlertTriangle,
   ArrowRight,
-  BarChart3,
-  CalendarDays,
 } from "lucide-react";
 
 const SKILL_OPTIONS = [

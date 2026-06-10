@@ -10,7 +10,6 @@ import {
   CalendarDays,
   MapPin,
   Clock,
-  User,
   Users,
   Wheat,
   ExternalLink,
