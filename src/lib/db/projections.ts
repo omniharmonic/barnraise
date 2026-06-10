@@ -27,6 +27,7 @@ export const memberAccountColumns = {
 export const selfAccountColumns = {
   ...memberAccountColumns,
   email: accounts.email,
+  emailDigest: accounts.emailDigest,
   updatedAt: accounts.updatedAt,
 } as const;
 

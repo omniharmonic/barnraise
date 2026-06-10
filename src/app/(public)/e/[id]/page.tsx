@@ -76,34 +76,63 @@ export default async function PublicEventPage({ params }: Props) {
       hours: c.claim.hoursCommitted,
     }));
 
+  // schema.org Event markup for richer search / social unfurls.
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Event",
+    name: event.title,
+    startDate: event.dateStart.toISOString(),
+    endDate: event.dateEnd.toISOString(),
+    eventStatus:
+      event.status === "cancelled"
+        ? "https://schema.org/EventCancelled"
+        : "https://schema.org/EventScheduled",
+    eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
+    ...(event.description ? { description: event.description } : {}),
+    ...(event.locationName
+      ? { location: { "@type": "Place", name: event.locationName } }
+      : {}),
+    organizer: { "@type": "Organization", name: pool?.name ?? "Barn Raise pool" },
+  };
+
   return (
-    <PublicEventClient
-      event={{
-        id: event.id,
-        title: event.title,
-        description: event.description,
-        dateStart: event.dateStart.toISOString(),
-        dateEnd: event.dateEnd.toISOString(),
-        locationName: event.locationName,
-        totalHoursNeeded: event.totalHoursNeeded,
-        hoursClaimed: event.hoursClaimed,
-        maxParticipants: event.maxParticipants,
-        participantsCount: event.participantsCount,
-        skillTags: event.skillTags,
-        status: event.status,
-        poolId: event.poolId,
-        flexibleHours: event.flexibleHours ?? true,
-      }}
-      host={{
-        displayName: host?.displayName ?? "Unknown",
-      }}
-      pool={{
-        id: pool?.id ?? "",
-        name: pool?.name ?? "Unknown Pool",
-        description: pool?.description ?? null,
-        joinPolicy: pool?.joinPolicy ?? "invite",
-      }}
-      claims={activeClaims}
-    />
+    <>
+      <script
+        type="application/ld+json"
+        // Escape `<` so a "</script>" inside a user-provided title/description
+        // can't break out of the script element.
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c"),
+        }}
+      />
+      <PublicEventClient
+        event={{
+          id: event.id,
+          title: event.title,
+          description: event.description,
+          dateStart: event.dateStart.toISOString(),
+          dateEnd: event.dateEnd.toISOString(),
+          locationName: event.locationName,
+          totalHoursNeeded: event.totalHoursNeeded,
+          hoursClaimed: event.hoursClaimed,
+          maxParticipants: event.maxParticipants,
+          participantsCount: event.participantsCount,
+          skillTags: event.skillTags,
+          status: event.status,
+          poolId: event.poolId,
+          flexibleHours: event.flexibleHours ?? true,
+        }}
+        host={{
+          displayName: host?.displayName ?? "Unknown",
+        }}
+        pool={{
+          id: pool?.id ?? "",
+          name: pool?.name ?? "Unknown Pool",
+          description: pool?.description ?? null,
+          joinPolicy: pool?.joinPolicy ?? "invite",
+        }}
+        claims={activeClaims}
+      />
+    </>
   );
 }

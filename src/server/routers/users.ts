@@ -34,6 +34,16 @@ export const usersRouter = router({
       return updated;
     }),
 
+  updateNotificationSettings: protectedProcedure
+    .input(z.object({ emailDigest: z.enum(["instant", "daily", "weekly", "off"]) }))
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db
+        .update(accounts)
+        .set({ emailDigest: input.emailDigest, updatedAt: new Date() })
+        .where(eq(accounts.id, ctx.userId));
+      return { success: true };
+    }),
+
   myPoolStats: protectedProcedure.query(async ({ ctx }) => {
     // Get aggregated stats across all pools
     const poolStats = await ctx.db

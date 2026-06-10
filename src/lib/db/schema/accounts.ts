@@ -15,6 +15,9 @@ export const accounts = pgTable("accounts", {
   locationName: text("location_name"),
   skills: text("skills").array(),
 
+  // Notification preferences: 'instant' | 'daily' | 'weekly' | 'off'
+  emailDigest: text("email_digest").notNull().default("instant"),
+
   // V2 bridge fields
   chainAddress: text("chain_address"),
   custodial: boolean("custodial").default(true),

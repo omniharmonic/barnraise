@@ -39,6 +39,7 @@ export default function ProfilePage() {
   });
   const [dirty, setDirty] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [emailDigest, setEmailDigest] = useState<"instant" | "daily" | "weekly" | "off">("instant");
 
   useEffect(() => {
     if (me) {
@@ -49,8 +50,16 @@ export default function ProfilePage() {
         skills: me.skills || [],
         avatarUrl: me.avatarUrl || null,
       });
+      setEmailDigest(
+        (me.emailDigest as "instant" | "daily" | "weekly" | "off") ?? "instant"
+      );
     }
   }, [me]);
+
+  const updateNotifications = useMutation({
+    ...trpc.users.updateNotificationSettings.mutationOptions(),
+    onSuccess: () => queryClient.invalidateQueries(),
+  });
 
   const updateProfile = useMutation({
     ...trpc.users.updateProfile.mutationOptions(),
@@ -254,6 +263,46 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Notification preferences */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Notifications</CardTitle>
+          <CardDescription>
+            How often we email you about pool and event activity. In-app
+            notifications are always on.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {(
+              [
+                ["instant", "Instant"],
+                ["daily", "Daily digest"],
+                ["weekly", "Weekly digest"],
+                ["off", "Off"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={emailDigest === value}
+                onClick={() => {
+                  setEmailDigest(value);
+                  updateNotifications.mutate({ emailDigest: value });
+                }}
+                className={`rounded-xl border px-3 py-2 text-sm transition-colors ${
+                  emailDigest === value
+                    ? "border-barn bg-barn-light/40 text-walnut font-medium"
+                    : "border-earth bg-cream-light text-walnut-muted hover:bg-cream-dark"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Edit form */}
       <Card>
